@@ -8,14 +8,14 @@ import Foundation
 struct Video: Identifiable, Codable {
     let id: String
     let title: String
-    let videoURL: String
-    let thumbnailURL: String
+    var videoURL: String
+    var thumbnailURL: String
     let uploaderID: String
     let uploaderUsername: String
     let uploadedAt: Date
     let duration: Double
     let hasHaptics: Bool
-    let hapticsURL: String?
+    var hapticsURL: String?
     var views: Int
     let description: String?
     
