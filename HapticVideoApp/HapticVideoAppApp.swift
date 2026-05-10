@@ -33,9 +33,7 @@ struct HapticVideoAppApp: App {
                 }
                 .sheet(isPresented: $showSharedVideo) {
                     if let video = sharedVideoToOpen {
-                        // Assuming VideoPlayerView can take a Video object
-                        // VideoPlayerView(video: video)
-                        Text("Playing Shared Video: \(video.title)")
+                        VideoPlayerView(video: video)
                     }
                 }
         }
