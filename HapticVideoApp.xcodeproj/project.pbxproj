@@ -195,6 +195,9 @@
 			);
 			mainGroup = 078706CD2EEB49D0009733AC;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				07D4777C2FB032250092A3B9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 078706D72EEB49D0009733AC /* Products */;
 			projectDirPath = "";
@@ -408,7 +411,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = Aman.HapticVideoApp;
+				PRODUCT_BUNDLE_IDENTIFIER = banthia14aman.HapticVideoApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -436,7 +439,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = Aman.HapticVideoApp;
+				PRODUCT_BUNDLE_IDENTIFIER = banthia14aman.HapticVideoApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -552,6 +555,17 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		07D4777C2FB032250092A3B9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 12.13.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
 	};
 	rootObject = 078706CE2EEB49D0009733AC /* Project object */;
 }
