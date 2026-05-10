@@ -11,6 +11,7 @@ struct ProfileView: View {
     @EnvironmentObject var authViewModel: AuthenticationViewModel
     @State private var showSignOutAlert = false
     @State private var animateStats = false
+    @State private var showFeedbackForm = false
     
     var body: some View {
         NavigationStack {
@@ -101,6 +102,9 @@ struct ProfileView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .sheet(isPresented: $showFeedbackForm) {
+            FeedbackFormView()
+        }
         .onAppear {
             UIHaptics.prepare()
             withAnimation(.easeOut(duration: 0.8).delay(0.2)) {
@@ -239,6 +243,16 @@ struct ProfileView: View {
                     .background(AppColors.backgroundTertiary)
                 
                 SettingsRow(icon: "moon.fill", title: "Dark Mode", hasToggle: true, isOn: true)
+                
+                Divider()
+                    .background(AppColors.backgroundTertiary)
+                
+                Button {
+                    UIHaptics.buttonTap()
+                    showFeedbackForm = true
+                } label: {
+                    SettingsRow(icon: "bubble.left.and.bubble.right.fill", title: "Give Feedback", hasToggle: false)
+                }
             }
             .background(AppColors.backgroundSecondary)
             .cornerRadius(16)
