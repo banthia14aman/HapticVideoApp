@@ -24,7 +24,8 @@ class UploadViewModel: ObservableObject {
     private var pendingUploaderID: String = ""
     private var pendingUploaderUsername: String = ""
     
-    private let dataStore = LocalDataStore.shared
+    // Uses Firebase backend
+    private let dataStore = CloudDataStore.shared
     
     func uploadVideo(
         videoURL: URL,
@@ -127,42 +128,54 @@ class UploadViewModel: ObservableObject {
         }
         
         do {
-            print("💾 Finalizing upload...")
+            print("☁️ Uploading to cloud...")
             
             var validatedPattern = editedPattern
             validatedPattern.events = validateHapticEvents(editedPattern.events, videoDuration: videoDuration)
             
-            let savedVideoURL = try saveVideoFile(videoURL)
+            // Get local data
+            let videoData = try Data(contentsOf: videoURL)
             let thumbnailURL = try await generateThumbnail(from: videoURL)
-            let hapticsURL = try saveHapticPattern(validatedPattern)
+            let thumbnailData = try Data(contentsOf: thumbnailURL)
+            
+            // Encode haptics
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            let hapticsData = try encoder.encode(validatedPattern)
             
             let video = Video(
                 id: UUID().uuidString,
                 title: pendingTitle,
-                videoURL: savedVideoURL.path,
-                thumbnailURL: thumbnailURL.path,
+                videoURL: "", // Will be populated by CloudDataStore
+                thumbnailURL: "",
                 uploaderID: pendingUploaderID,
                 uploaderUsername: pendingUploaderUsername,
                 uploadedAt: Date(),
                 duration: videoDuration,
                 hasHaptics: true,
-                hapticsURL: hapticsURL.path,
+                hapticsURL: nil,
                 views: 0,
                 description: pendingDescription
             )
             
-            dataStore.saveVideo(video)
-            
-            uploadProgress = 1.0
-            isUploading = false
-            showHapticEditor = false
-            generatedPattern = nil
-            currentVideoURL = nil
-            
-            print("✅ Upload complete!")
-            
+            dataStore.uploadVideo(video: video, videoData: videoData, thumbnailData: thumbnailData, hapticsData: hapticsData) { [weak self] result in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success(_):
+                        self?.uploadProgress = 1.0
+                        self?.isUploading = false
+                        self?.showHapticEditor = false
+                        self?.generatedPattern = nil
+                        self?.currentVideoURL = nil
+                        print("✅ Cloud Upload complete!")
+                    case .failure(let error):
+                        self?.errorMessage = "Cloud Upload failed: \(error.localizedDescription)"
+                        self?.isUploading = false
+                    }
+                }
+            }
         } catch {
-            errorMessage = "Save failed: \(error.localizedDescription)"
+            errorMessage = "Upload prep failed: \(error.localizedDescription)"
             isUploading = false
         }
     }
@@ -395,9 +408,10 @@ class UploadViewModel: ObservableObject {
             throw VideoUploadError.thumbnailGenerationFailed
         }
         
-        let documentsDir = dataStore.getDocumentsDirectory()
+        // Fallback local temp storage for the thumbnail image creation
+        let tempDir = FileManager.default.temporaryDirectory
         let filename = "\(UUID().uuidString)_thumb.jpg"
-        let thumbnailURL = documentsDir.appendingPathComponent(filename)
+        let thumbnailURL = tempDir.appendingPathComponent(filename)
         try imageData.write(to: thumbnailURL)
         
         return thumbnailURL
