@@ -50,6 +50,7 @@
       <ul class="nav-links">
         <li><a href="#editor">Editor</a></li>
         <li><a href="#timeline">Timeline</a></li>
+        <li><a href="#ai">AI</a></li>
         <li><a href="#features">Features</a></li>
         <li><a href="#how">How it works</a></li>
       </ul>
@@ -79,7 +80,7 @@
     </h1>
 
     <p class="hero-sub">
-      An iOS app that auto-generates haptics from a video's audio and lets you fine-tune them on a Premiere-style multi-lane timeline. Tap, beat, hold — feel the cut.
+      An iOS app that auto-generates haptics from a video using on-device AI — sound classification, optical-flow motion analysis, and spectral DSP all fused — then lets you fine-tune on a Premiere-style multi-lane timeline.
     </p>
 
     <div class="hero-ctas">
@@ -95,6 +96,7 @@
 
     <div class="platform-pills">
       <span class="pill">📱 iOS 17+</span>
+      <span class="pill">🧠 On-device AI</span>
       <span class="pill">🎬 SwiftUI</span>
       <span class="pill">🌊 CoreHaptics</span>
       <span class="pill muted-pill">🔥 Firebase cloud storage</span>
@@ -104,23 +106,27 @@
   <!-- ── Marquee strip ──────────────────────────────────────── -->
   <div class="marquee-wrap" aria-hidden="true">
     <div class="marquee">
+      <span class="marquee-item"><span class="dot"></span>on-device sound classification</span>
+      <span class="marquee-item"><span class="dot"></span>optical-flow motion analysis</span>
+      <span class="marquee-item"><span class="dot"></span>FFT + spectral flux</span>
+      <span class="marquee-item"><span class="dot"></span>dialogue auto-suppress</span>
       <span class="marquee-item"><span class="dot"></span>multi-lane timeline</span>
-      <span class="marquee-item"><span class="dot"></span>FFT audio analysis</span>
       <span class="marquee-item"><span class="dot"></span>CHHapticAdvancedPatternPlayer</span>
       <span class="marquee-item"><span class="dot"></span>pinch-to-zoom</span>
       <span class="marquee-item"><span class="dot"></span>Premiere-style chrome</span>
       <span class="marquee-item"><span class="dot"></span>frame-accurate scrub</span>
       <span class="marquee-item"><span class="dot"></span>tap · beat · hold</span>
-      <span class="marquee-item"><span class="dot"></span>cloud sync</span>
       <!-- duplicate for seamless loop -->
+      <span class="marquee-item"><span class="dot"></span>on-device sound classification</span>
+      <span class="marquee-item"><span class="dot"></span>optical-flow motion analysis</span>
+      <span class="marquee-item"><span class="dot"></span>FFT + spectral flux</span>
+      <span class="marquee-item"><span class="dot"></span>dialogue auto-suppress</span>
       <span class="marquee-item"><span class="dot"></span>multi-lane timeline</span>
-      <span class="marquee-item"><span class="dot"></span>FFT audio analysis</span>
       <span class="marquee-item"><span class="dot"></span>CHHapticAdvancedPatternPlayer</span>
       <span class="marquee-item"><span class="dot"></span>pinch-to-zoom</span>
       <span class="marquee-item"><span class="dot"></span>Premiere-style chrome</span>
       <span class="marquee-item"><span class="dot"></span>frame-accurate scrub</span>
       <span class="marquee-item"><span class="dot"></span>tap · beat · hold</span>
-      <span class="marquee-item"><span class="dot"></span>cloud sync</span>
     </div>
   </div>
 
@@ -203,6 +209,81 @@
     </div>
   </section>
 
+  <!-- ── AI pipeline ────────────────────────────────────────── -->
+  <section id="ai" class="section-pad" style="border-top:1px solid var(--border-soft);">
+    <div class="container">
+      <div class="up" style="max-width:780px; margin: 0 auto 36px; text-align:center;">
+        <p class="section-eyebrow">The AI pipeline</p>
+        <h2 class="section-heading" style="margin: 0 auto;">Three on-device models, fused into one haptic stream.</h2>
+        <p class="section-sub" style="margin-left:auto; margin-right:auto;">
+          A pure DSP analyzer is blind to <em>what</em> is happening — it fires on dialogue's bass, misses silent action, and can't tell a snare from a glass break. Phase 1 layers two on-device AI gates on top so the haptics actually <em>understand</em> the video.
+        </p>
+      </div>
+
+      <div class="ai-pipeline up">
+        <!-- input -->
+        <div class="ai-pipe-stage">
+          <div class="ai-stage-tag">VIDEO IN</div>
+          <div class="ai-stage-title">Frames + audio</div>
+          <div class="ai-stage-body">Extracted on import. Audio decoded to 44.1 kHz float; video downsampled to 4 fps thumbnails for flow.</div>
+        </div>
+
+        <div class="ai-pipe-arrow">→</div>
+
+        <!-- three parallel models -->
+        <div class="ai-stage-trio">
+          <div class="ai-pipe-stage ai-stage-accent-orange">
+            <div class="ai-stage-tag">CLASSICAL DSP</div>
+            <div class="ai-stage-title">vDSP FFT · 5-band energy · spectral flux onsets</div>
+            <div class="ai-stage-body">The original analyzer. Provides energy peaks and onsets. Strong on rhythmic, energetic content.</div>
+            <div class="ai-stage-mono">AudioAnalyzer.swift</div>
+          </div>
+
+          <div class="ai-pipe-stage ai-stage-accent-cyan">
+            <div class="ai-stage-tag">SOUND CLASSIFICATION</div>
+            <div class="ai-stage-title">Apple SNClassifySoundRequest · 300+ classes</div>
+            <div class="ai-stage-body">Tags every 0.5 s window: <span class="ai-chip">speech</span> <span class="ai-chip">music</span> <span class="ai-chip">gunshot</span> <span class="ai-chip">glass</span> <span class="ai-chip">explosion</span> <span class="ai-chip">…</span></div>
+            <div class="ai-stage-mono">SoundClassifier.swift</div>
+          </div>
+
+          <div class="ai-pipe-stage ai-stage-accent-violet">
+            <div class="ai-stage-tag">OPTICAL FLOW</div>
+            <div class="ai-stage-title">Vision · VNGenerateOpticalFlowRequest</div>
+            <div class="ai-stage-body">Per-pixel motion magnitudes between adjacent frames. Catches silent action, foley-less impacts, and visual emphasis.</div>
+            <div class="ai-stage-mono">VideoMotionAnalyzer.swift</div>
+          </div>
+        </div>
+
+        <div class="ai-pipe-arrow">↓</div>
+
+        <!-- fusion -->
+        <div class="ai-pipe-stage ai-stage-accent-fused">
+          <div class="ai-stage-tag">FUSION</div>
+          <div class="ai-stage-title">AIVideoContext · semantic gates and second pass</div>
+          <div class="ai-stage-body">
+            <ul class="ai-stage-rules">
+              <li><b>Suppress</b> events when <span class="ai-chip ai-chip-mute">speech ≥ 0.7</span> (unless an impact class is also firing)</li>
+              <li><b>Upgrade</b> event type + boost intensity ×1.3–1.6 on <span class="ai-chip">gunshot</span> <span class="ai-chip">explosion</span> <span class="ai-chip">glass</span> <span class="ai-chip">slam</span></li>
+              <li><b>Add</b> visual-only impact events on motion spikes (μ + 2σ) the audio pass missed</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="ai-pipe-arrow">↓</div>
+
+        <div class="ai-pipe-stage ai-stage-output">
+          <div class="ai-stage-tag">HAPTIC OUT</div>
+          <div class="ai-stage-title">HapticEvent[]</div>
+          <div class="ai-stage-body">A semantically-aware haptic timeline. Renders via CHHapticAdvancedPatternPlayer in lockstep with AVPlayer.</div>
+        </div>
+      </div>
+
+      <p class="ai-footnote up" style="margin-top:30px;">
+        Everything above runs <b>on-device</b> using frameworks shipped with iOS — zero API calls, zero cost, zero data leaving the phone. <a href="https://github.com/banthia14aman/HapticVideoApp/blob/main/RESEARCH_AI_HAPTICS.md">Read the research →</a>
+      </p>
+    </div>
+  </section>
+
   <!-- ── Philosophy pills ───────────────────────────────────── -->
   <section class="section-pad">
     <div class="container center up">
@@ -237,9 +318,9 @@
           <p>CHHapticAdvancedPatternPlayer is locked to AVPlayer state. Seeks, edits, and re-edits all re-sync the engine without dropped events.</p>
         </div>
         <div class="feature-card up" style="transition-delay:.1s">
-          <div class="feature-icon orange">🎼</div>
-          <h4>Auto-generate from audio</h4>
-          <p>FFT + spectral-flux analysis converts your video's audio into a first-pass haptic pattern, then you fine-tune on the timeline.</p>
+          <div class="feature-icon orange">🧠</div>
+          <h4>AI-powered generation</h4>
+          <p>On-device sound classification suppresses dialogue and upgrades gunshots / explosions / glass; optical-flow adds haptics for silent action; classical FFT catches everything else.</p>
         </div>
         <div class="feature-card up" style="transition-delay:.15s">
           <div class="feature-icon pink">🎯</div>
@@ -276,8 +357,8 @@
         </div>
         <div class="step up" style="transition-delay:.07s">
           <div class="num">02 · ANALYZE</div>
-          <h5>Audio → haptics</h5>
-          <p>The audio analyzer runs FFT + spectral-flux to detect onsets and energy peaks, producing a first-pass haptic pattern.</p>
+          <h5>AI + DSP, on-device</h5>
+          <p>FFT + spectral flux runs in parallel with Apple's sound classifier and Vision optical flow. All three signals are fused into a semantically-aware pattern — dialogue suppressed, impacts boosted, silent action filled in.</p>
         </div>
         <div class="step up" style="transition-delay:.14s">
           <div class="num">03 · EDIT</div>

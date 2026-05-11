@@ -325,84 +325,181 @@ class AudioAnalyzer {
     }
     
     // MARK: - Haptic Event Generation (Responsive & Satisfying)
-    
-    func generateHapticEvents(from frames: [AudioAnalysisFrame], videoDuration: Double) -> [HapticEvent] {
+
+    func generateHapticEvents(from frames: [AudioAnalysisFrame],
+                              videoDuration: Double,
+                              aiContext: AIVideoContext = .empty) -> [HapticEvent] {
         var events: [HapticEvent] = []
         var lastEventTime: Double = -10
-        
+
         // MORE RESPONSIVE: 100ms cooldown
         let globalMinInterval: Double = 0.10
-        
+
         // ALL onset frames matter
         let onsetFrames = frames.filter { $0.isOnset }
-        
+
         // Also include high-energy frames
         let highEnergyFrames = frames.filter { !$0.isOnset && $0.rms > 0.25 }
-        
+
         // Combine all significant frames
         var significantFrames = onsetFrames
-        
+
         // Add top 30% of high energy frames
         if !highEnergyFrames.isEmpty {
             let sortedEnergy = highEnergyFrames.sorted { $0.rms > $1.rms }
             let topEnergy = Array(sortedEnergy.prefix(max(10, highEnergyFrames.count / 3)))
             significantFrames.append(contentsOf: topEnergy)
         }
-        
+
         significantFrames.sort { $0.time < $1.time }
-        
-        guard !significantFrames.isEmpty else {
-            return generateFromAllEnergy(frames: frames, videoDuration: videoDuration)
+
+        // Counters for AI-gate debug logging
+        var dialogueSuppressed = 0
+        var impactUpgraded = 0
+
+        if significantFrames.isEmpty {
+            events = generateFromAllEnergy(frames: frames, videoDuration: videoDuration)
+        } else {
+            for frame in significantFrames {
+                guard frame.time < videoDuration - 1.0 else { continue }
+                guard frame.time - lastEventTime >= globalMinInterval else { continue }
+
+                // ─── Phase-1 AI gate ─────────────────────────────────────
+                // Check impact class first — an explosion in a dialogue
+                // scene should still trigger a haptic.
+                let impactUpgrade = aiContext.matchingImpactClass(at: frame.time,
+                                                                  minConfidence: 0.5)
+
+                // Suppress for dialogue only if no high-priority impact is
+                // happening at the same time.
+                if impactUpgrade == nil
+                    && aiContext.isLabelActive(matching: "speech",
+                                               at: frame.time,
+                                               minConfidence: 0.7) {
+                    dialogueSuppressed += 1
+                    continue
+                }
+                // ─────────────────────────────────────────────────────────
+
+                let (dominantBand, dominantEnergy) = findDominantBand(frame.bandEnergies)
+
+                // Very low threshold - respond to most audio
+                guard dominantEnergy > 0.15 || frame.isOnset else { continue }
+
+                var eventType = selectResponsiveEventType(
+                    band: dominantBand,
+                    isOnset: frame.isOnset,
+                    onsetStrength: frame.onsetStrength,
+                    energy: dominantEnergy
+                )
+
+                var intensity = calculateResponsiveIntensity(
+                    frame: frame,
+                    band: dominantBand,
+                    isOnset: frame.isOnset
+                )
+
+                let sharpness = calculateSharpness(frame: frame, band: dominantBand)
+                let duration = calculateResponsiveDuration(for: eventType, energy: dominantEnergy)
+
+                // ─── Phase-1 AI gate: impact upgrade ──────────────────────
+                if let upgrade = impactUpgrade {
+                    eventType = upgrade.preferredType
+                    intensity = min(1.0, intensity * upgrade.intensityBoost)
+                    impactUpgraded += 1
+                }
+                // ─────────────────────────────────────────────────────────
+
+                let event = HapticEvent(
+                    time: frame.time,
+                    intensity: intensity,
+                    sharpness: sharpness,
+                    duration: duration,
+                    type: eventType
+                )
+
+                events.append(event)
+                lastEventTime = frame.time
+            }
         }
-        
-        for frame in significantFrames {
-            guard frame.time < videoDuration - 1.0 else { continue }
-            guard frame.time - lastEventTime >= globalMinInterval else { continue }
-            
-            let (dominantBand, dominantEnergy) = findDominantBand(frame.bandEnergies)
-            
-            // Very low threshold - respond to most audio
-            guard dominantEnergy > 0.15 || frame.isOnset else { continue }
-            
-            let eventType = selectResponsiveEventType(
-                band: dominantBand,
-                isOnset: frame.isOnset,
-                onsetStrength: frame.onsetStrength,
-                energy: dominantEnergy
-            )
-            
-            let intensity = calculateResponsiveIntensity(
-                frame: frame,
-                band: dominantBand,
-                isOnset: frame.isOnset
-            )
-            
-            let sharpness = calculateSharpness(frame: frame, band: dominantBand)
-            let duration = calculateResponsiveDuration(for: eventType, energy: dominantEnergy)
-            
-            let event = HapticEvent(
-                time: frame.time,
-                intensity: intensity,
-                sharpness: sharpness,
-                duration: duration,
-                type: eventType
-            )
-            
-            events.append(event)
-            lastEventTime = frame.time
+
+        // ─── Phase-1 second pass: visual-only events ──────────────────────
+        let visualEvents = generateVisualOnlyEvents(aiContext: aiContext,
+                                                    existingEvents: events,
+                                                    videoDuration: videoDuration)
+        if !visualEvents.isEmpty {
+            events.append(contentsOf: visualEvents)
+            events.sort { $0.time < $1.time }
         }
-        
+        // ─────────────────────────────────────────────────────────────────
+
         var finalEvents = deduplicateEvents(events)
-        
+
         // Allow up to 5 events per second for responsive feel
         let maxEvents = Int(videoDuration * 5)
         if finalEvents.count > maxEvents {
             finalEvents = Array(finalEvents.sorted { $0.intensity > $1.intensity }.prefix(maxEvents))
             finalEvents.sort { $0.time < $1.time }
         }
-        
-        print("💪 Responsive: \(finalEvents.count) haptics for \(String(format: "%.1f", videoDuration))s video")
+
+        print("💪 Generated \(finalEvents.count) haptics for \(String(format: "%.1f", videoDuration))s video"
+              + "  [dialogue-suppressed: \(dialogueSuppressed),"
+              + " impact-upgraded: \(impactUpgraded),"
+              + " visual-only added: \(visualEvents.count)]")
         return finalEvents
+    }
+
+    // MARK: - Visual-only events (Phase-1)
+
+    /// Emit `.impact` events for motion spikes that the audio pass missed.
+    /// Skips windows where dialogue is active (unless an impact-class is
+    /// also detected, in which case the audio loop handles it already).
+    private func generateVisualOnlyEvents(aiContext: AIVideoContext,
+                                          existingEvents: [HapticEvent],
+                                          videoDuration: Double) -> [HapticEvent] {
+        guard !aiContext.motionSamples.isEmpty else { return [] }
+
+        let (mean, std) = aiContext.motionStats()
+        guard std > 0 else { return [] }
+        let threshold = mean + 2 * std
+
+        var visualEvents: [HapticEvent] = []
+        var lastVisualTime: Double = -10
+
+        for sample in aiContext.motionSamples {
+            guard sample.magnitude > threshold else { continue }
+            guard sample.time < videoDuration - 1.0 else { continue }
+            guard sample.time - lastVisualTime >= 0.25 else { continue }
+
+            // Skip when there's already an event in this window — the
+            // audio pipeline got it.
+            let nearby = existingEvents.contains { abs($0.time - sample.time) < 0.1 }
+            if nearby { continue }
+
+            // Honour the dialogue gate unless an impact class is firing.
+            let impact = aiContext.matchingImpactClass(at: sample.time, minConfidence: 0.5)
+            if impact == nil
+                && aiContext.isLabelActive(matching: "speech",
+                                           at: sample.time,
+                                           minConfidence: 0.7) {
+                continue
+            }
+
+            // Intensity scales with motion z-score, clamped to a satisfying range.
+            let z = (sample.magnitude - mean) / max(std, 0.001)
+            let intensity: Float = min(1.0, max(0.55, 0.55 + z * 0.12))
+
+            visualEvents.append(HapticEvent(
+                time: sample.time,
+                intensity: intensity,
+                sharpness: 0.5,
+                duration: 0,
+                type: .impact
+            ))
+            lastVisualTime = sample.time
+        }
+
+        return visualEvents
     }
     
     /// Generate from all energy when no onsets

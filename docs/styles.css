@@ -404,6 +404,136 @@ section { position: relative; }
 .feature-card h4 { color: #fff; font-size: 17px; font-weight: 700; margin-bottom: 8px; }
 .feature-card p { color: var(--muted); font-size: 14px; line-height: 1.65; }
 
+/* ═══ AI PIPELINE ════════════════════════════════════════════════ */
+.ai-pipeline {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 18px;
+  max-width: 1080px;
+  margin: 0 auto;
+}
+.ai-pipe-stage {
+  background: rgba(255,255,255,.03);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 22px 22px 20px;
+  position: relative;
+  overflow: hidden;
+  transition: border-color .25s, background .25s, transform .2s;
+}
+.ai-pipe-stage:hover {
+  transform: translateY(-2px);
+  border-color: rgba(140,92,255,.32);
+  background: rgba(140,92,255,.03);
+}
+.ai-pipe-stage::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(135deg, rgba(140,92,255,.04), transparent 60%);
+  pointer-events: none;
+}
+.ai-stage-tag {
+  display: inline-block;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 10px; font-weight: 700;
+  letter-spacing: .18em; text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 10px;
+}
+.ai-stage-title {
+  color: #fff; font-size: 17px; font-weight: 700;
+  letter-spacing: -.01em;
+  margin-bottom: 8px;
+}
+.ai-stage-body {
+  color: var(--muted); font-size: 14px; line-height: 1.6;
+}
+.ai-stage-mono {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 11px; color: var(--dim);
+  margin-top: 12px;
+}
+.ai-stage-trio {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+@media (min-width: 880px) {
+  .ai-stage-trio { grid-template-columns: repeat(3, 1fr); }
+}
+.ai-stage-accent-orange .ai-stage-tag { color: var(--accent-3); }
+.ai-stage-accent-orange::before { background: linear-gradient(135deg, rgba(255,138,76,.07), transparent 65%); }
+.ai-stage-accent-cyan .ai-stage-tag { color: var(--accent-2); }
+.ai-stage-accent-cyan::before { background: linear-gradient(135deg, rgba(91,192,255,.07), transparent 65%); }
+.ai-stage-accent-violet .ai-stage-tag { color: var(--accent); }
+.ai-stage-accent-violet::before { background: linear-gradient(135deg, rgba(140,92,255,.08), transparent 65%); }
+.ai-stage-accent-fused {
+  border-color: rgba(140,92,255,.3);
+  background: rgba(140,92,255,.04);
+}
+.ai-stage-accent-fused .ai-stage-tag { color: var(--accent); }
+.ai-stage-accent-fused::before {
+  background: radial-gradient(80% 60% at 50% 0%, rgba(140,92,255,.15), transparent 65%);
+}
+.ai-stage-output {
+  border-color: rgba(91,192,255,.28);
+  background: rgba(91,192,255,.04);
+}
+.ai-stage-output .ai-stage-tag { color: var(--accent-2); }
+.ai-pipe-arrow {
+  text-align: center;
+  color: var(--dim);
+  font-size: 18px;
+  letter-spacing: .5em;
+  font-weight: 300;
+  padding: 2px 0;
+  user-select: none;
+}
+.ai-stage-rules {
+  list-style: none; padding: 0; margin: 0;
+  display: grid; gap: 8px;
+}
+.ai-stage-rules li {
+  color: var(--muted); font-size: 13.5px; line-height: 1.55;
+  padding-left: 16px; position: relative;
+}
+.ai-stage-rules li::before {
+  content: '▸';
+  position: absolute; left: 0; top: 0;
+  color: var(--accent);
+}
+.ai-stage-rules b { color: #fff; font-weight: 700; }
+.ai-chip {
+  display: inline-block;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 11px; font-weight: 600;
+  padding: 2px 8px;
+  margin: 2px 1px;
+  border-radius: 5px;
+  background: rgba(255,255,255,.06);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.ai-chip-mute {
+  background: rgba(242,106,106,.08);
+  color: #FF9696;
+  border-color: rgba(242,106,106,.2);
+}
+.ai-footnote {
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+}
+.ai-footnote a {
+  color: var(--accent);
+  font-weight: 600;
+  border-bottom: 1px dashed rgba(140,92,255,.45);
+  padding-bottom: 1px;
+  transition: border-color .2s, color .2s;
+}
+.ai-footnote a:hover { color: #fff; border-bottom-color: #fff; }
+
 /* ═══ PHILOSOPHY PILLS ═══════════════════════════════════════════ */
 .philosophy {
   display: flex; flex-wrap: wrap; gap: 12px;

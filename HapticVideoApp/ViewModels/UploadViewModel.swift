@@ -88,34 +88,74 @@ class UploadViewModel: ObservableObject {
     
     private func generateAdvancedHaptics(for videoURL: URL, duration: Double) async throws -> [HapticEvent] {
         let asset = AVURLAsset(url: videoURL)
-        
+
         guard let audioTrack = try await asset.loadTracks(withMediaType: .audio).first else {
-            print("⚠️ No audio track, using rhythm")
-            return generateRhythmicHaptics(duration: duration)
+            print("⚠️ No audio track — running motion-only analysis")
+            // Even without audio, try motion-driven haptics from video.
+            let motionOnlySamples = (try? await VideoMotionAnalyzer().analyze(asset: asset)) ?? []
+            let context = AIVideoContext(soundHits: [],
+                                         motionSamples: motionOnlySamples,
+                                         videoDuration: duration)
+            let analyzer = AudioAnalyzer()
+            var events = analyzer.generateHapticEvents(from: [],
+                                                       videoDuration: duration,
+                                                       aiContext: context)
+            if events.isEmpty {
+                events = generateRhythmicHaptics(duration: duration)
+            }
+            events = validateHapticEvents(events, videoDuration: duration)
+            hapticGenerationProgress = 1.0
+            return events
         }
-        
+
         // Extract audio samples using existing method
         let samples = try await extractAudioSamples(from: asset, audioTrack: audioTrack, duration: duration)
-        
-        // Use advanced analyzer
         let analyzer = AudioAnalyzer()
-        
-        // Analyze with progress callback
-        let frames = analyzer.analyzeAudio(samples: samples, videoDuration: duration) { [weak self] progress in
-            Task { @MainActor in
-                self?.hapticGenerationProgress = 0.3 + progress * 0.5  // Progress from 30% to 80%
+
+        print("🤖 Phase-1 AI pipeline: classical DSP + sound classification + optical-flow gate")
+
+        // Kick off the three analyzers in parallel.
+        let audioTask = Task.detached(priority: .userInitiated) { [weak self] () -> [AudioAnalysisFrame] in
+            analyzer.analyzeAudio(samples: samples, videoDuration: duration) { progress in
+                Task { @MainActor in
+                    self?.hapticGenerationProgress = 0.3 + progress * 0.3   // 30% → 60%
+                }
             }
         }
-        
-        print("📊 Analyzed \(frames.count) audio frames")
-        print("📊 Detected \(frames.filter { $0.isOnset }.count) onsets")
-        
-        // Generate haptic events from analysis
-        var events = analyzer.generateHapticEvents(from: frames, videoDuration: duration)
-        
+
+        let soundTask = Task.detached(priority: .userInitiated) { () -> [SoundHit] in
+            await SoundClassifier().classify(samples: samples)
+        }
+
+        let motionTask = Task.detached(priority: .userInitiated) { () -> [MotionSample] in
+            (try? await VideoMotionAnalyzer().analyze(asset: asset)) ?? []
+        }
+
+        let frames = await audioTask.value
+        await MainActor.run { [weak self] in self?.hapticGenerationProgress = 0.7 }
+
+        let soundHits = await soundTask.value
+        await MainActor.run { [weak self] in self?.hapticGenerationProgress = 0.85 }
+
+        let motionSamples = await motionTask.value
+        await MainActor.run { [weak self] in self?.hapticGenerationProgress = 0.92 }
+
+        print("📊 Audio frames: \(frames.count), onsets: \(frames.filter { $0.isOnset }.count)")
+        let uniqueLabels = Set(soundHits.map { $0.label })
+        print("🎙️ Sound hits: \(soundHits.count) (\(uniqueLabels.count) unique labels)")
+        print("🎬 Motion samples: \(motionSamples.count)")
+
+        let aiContext = AIVideoContext(soundHits: soundHits,
+                                       motionSamples: motionSamples,
+                                       videoDuration: duration)
+
+        var events = analyzer.generateHapticEvents(from: frames,
+                                                   videoDuration: duration,
+                                                   aiContext: aiContext)
+
         // Validate and clamp events
         events = validateHapticEvents(events, videoDuration: duration)
-        
+
         hapticGenerationProgress = 1.0
         return events
     }
