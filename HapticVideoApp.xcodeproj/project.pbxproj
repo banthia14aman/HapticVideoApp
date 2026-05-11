@@ -6,6 +6,13 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		AA000001AAAAAAAAAAAAAAAA /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = BB000001BBBBBBBBBBBBBBBB /* FirebaseCore */; };
+		AA000002AAAAAAAAAAAAAAAA /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = BB000002BBBBBBBBBBBBBBBB /* FirebaseAuth */; };
+		AA000003AAAAAAAAAAAAAAAA /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = BB000003BBBBBBBBBBBBBBBB /* FirebaseFirestore */; };
+		AA000004AAAAAAAAAAAAAAAA /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = BB000004BBBBBBBBBBBBBBBB /* FirebaseStorage */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		078706E42EEB49D1009733AC /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -52,6 +59,10 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AA000001AAAAAAAAAAAAAAAA /* FirebaseCore in Frameworks */,
+				AA000002AAAAAAAAAAAAAAAA /* FirebaseAuth in Frameworks */,
+				AA000003AAAAAAAAAAAAAAAA /* FirebaseFirestore in Frameworks */,
+				AA000004AAAAAAAAAAAAAAAA /* FirebaseStorage in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -112,6 +123,10 @@
 			);
 			name = HapticVideoApp;
 			packageProductDependencies = (
+				BB000001BBBBBBBBBBBBBBBB /* FirebaseCore */,
+				BB000002BBBBBBBBBBBBBBBB /* FirebaseAuth */,
+				BB000003BBBBBBBBBBBBBBBB /* FirebaseFirestore */,
+				BB000004BBBBBBBBBBBBBBBB /* FirebaseStorage */,
 			);
 			productName = HapticVideoApp;
 			productReference = 078706D62EEB49D0009733AC /* HapticVideoApp.app */;
@@ -566,6 +581,29 @@
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		BB000001BBBBBBBBBBBBBBBB /* FirebaseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 07D4777C2FB032250092A3B9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCore;
+		};
+		BB000002BBBBBBBBBBBBBBBB /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 07D4777C2FB032250092A3B9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
+		BB000003BBBBBBBBBBBBBBBB /* FirebaseFirestore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 07D4777C2FB032250092A3B9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFirestore;
+		};
+		BB000004BBBBBBBBBBBBBBBB /* FirebaseStorage */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 07D4777C2FB032250092A3B9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseStorage;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 078706CE2EEB49D0009733AC /* Project object */;
 }

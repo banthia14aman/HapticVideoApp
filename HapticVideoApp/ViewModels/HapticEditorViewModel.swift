@@ -2,38 +2,47 @@
 //  HapticEditorViewModel.swift
 //  HapticVideoApp
 //
-//  Uses CHHapticAdvancedPatternPlayer for proper video synchronization
+//  Owns the AVPlayer + CHHapticAdvancedPatternPlayer pairing for the editor.
+//  Designed to keep haptics tightly synchronized with the video timeline and
+//  to recover cleanly from edits, seeks, and end-of-video.
 //
 
 import Foundation
 import AVFoundation
 import Combine
+import UIKit
 
 @MainActor
 class HapticEditorViewModel: ObservableObject {
-    // MARK: - Published Properties
+    // MARK: - Published State
     @Published var events: [HapticEvent] = []
     @Published var currentTime: Double = 0.0
     @Published var isPlaying: Bool = false
+    @Published var thumbnails: [UIImage] = []
     @Published var showHapticEditor: Bool = false
     @Published var generatedPattern: HapticPattern?
     @Published var currentVideoURL: URL?
-    
+
     // Video player
     @Published var player: AVPlayer?
-    
-    // Pattern and video info
-    var videoDuration: Double
-    private var videoURL: URL
+
+    // Configuration
+    let videoDuration: Double
+    private let videoURL: URL
+    private let stopBeforeEnd: Double = 0.5  // freeze playback / haptics this far from end
+
+    // Internal observers
     private var timeObserver: Any?
     private var rateObserver: NSKeyValueObservation?
-    
-    // Haptic playback
+    private var endObserver: NSObjectProtocol?
+
+    // Haptic engine
     private let hapticService = HapticService.shared
     private var hapticPatternLoaded: Bool = false
-    private var lastSyncTime: Double = 0
-    private let stopBeforeEnd: Double = 1.0 // Stop haptics 1 second before video ends
-    
+    private var lastObservedTime: Double = 0
+    private var lastReloadStamp: Date = .distantPast
+    private let reloadDebounce: TimeInterval = 0.12
+
     init(pattern: HapticPattern, videoURL: URL, videoDuration: Double) {
         self.events = pattern.events
         self.videoURL = videoURL
@@ -41,170 +50,228 @@ class HapticEditorViewModel: ObservableObject {
         self.videoDuration = videoDuration
         self.generatedPattern = pattern
     }
-    
+
     // MARK: - Video Player Setup
-    
+
     func setupPlayer() {
-        let playerItem = AVPlayerItem(url: videoURL)
-        player = AVPlayer(playerItem: playerItem)
-        
-        // Preload haptic pattern
+        let asset = AVURLAsset(url: videoURL)
+        let playerItem = AVPlayerItem(asset: asset)
+        let newPlayer = AVPlayer(playerItem: playerItem)
+        newPlayer.actionAtItemEnd = .pause
+        player = newPlayer
+
         loadHapticPattern()
-        
-        // Add time observer - high frequency for precise sync (20ms)
-        let interval = CMTime(seconds: 0.02, preferredTimescale: 600)
-        timeObserver = player?.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
+
+        // 30Hz UI updates — smooth playhead without thrashing SwiftUI
+        let interval = CMTime(seconds: 1.0 / 30.0, preferredTimescale: 600)
+        timeObserver = newPlayer.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
             guard let self = self else { return }
-            let currentTime = time.seconds
-            self.currentTime = currentTime
-            
-            // Stop haptics before video ends
-            if currentTime >= self.videoDuration - self.stopBeforeEnd {
-                self.stopHapticsEarly()
+            let t = time.seconds
+            guard t.isFinite else { return }
+
+            self.currentTime = t
+
+            // Pull haptics down before the very end of the file
+            if t >= self.videoDuration - self.stopBeforeEnd, self.hapticService.isPlaying {
+                self.hapticService.pauseAdvancedPlayer()
             }
-            
-            // Detect large seeks (re-sync needed)
-            let timeDiff = abs(currentTime - self.lastSyncTime)
-            if timeDiff > 0.5 && self.isPlaying {
-                self.hapticService.seekAdvancedPlayer(to: currentTime)
-            }
-            self.lastSyncTime = currentTime
+            self.lastObservedTime = t
         }
-        
-        // Observe play/pause state changes
-        rateObserver = player?.observe(\.rate, options: [.new]) { [weak self] player, change in
+
+        // Rate observer: keep haptics in lockstep with the AVPlayer
+        rateObserver = newPlayer.observe(\.rate, options: [.new]) { [weak self] avPlayer, _ in
             guard let self = self else { return }
-            let playing = player.rate > 0
-            
+            let isNowPlaying = avPlayer.rate > 0
+
             Task { @MainActor in
-                if playing && !self.isPlaying {
-                    // Video started playing - sync haptics
-                    self.syncHapticsToVideo()
-                } else if !playing && self.isPlaying {
-                    // Video paused - pause haptics
+                guard isNowPlaying != self.isPlaying else { return }
+                self.isPlaying = isNowPlaying
+                if isNowPlaying {
+                    self.startHapticPlayback()
+                } else {
                     self.hapticService.pauseAdvancedPlayer()
                 }
-                self.isPlaying = playing
             }
         }
-        
-        // Listen for video end
-        NotificationCenter.default.addObserver(
+
+        // End-of-video reset
+        endObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: playerItem,
             queue: .main
         ) { [weak self] _ in
-            self?.handleVideoEnd()
+            Task { @MainActor in
+                self?.handleVideoEnd()
+            }
+        }
+
+        Task {
+            await generateThumbnails(asset: asset)
         }
     }
-    
+
+    // MARK: - Thumbnails for the video track
+
+    private func generateThumbnails(asset: AVURLAsset) async {
+        let count = max(8, min(24, Int(videoDuration / 2)))
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 160, height: 90)
+        generator.requestedTimeToleranceBefore = .positiveInfinity
+        generator.requestedTimeToleranceAfter = .positiveInfinity
+
+        var images: [UIImage] = []
+        for i in 0..<count {
+            let t = Double(i) / Double(max(1, count - 1)) * videoDuration
+            let cmTime = CMTime(seconds: t, preferredTimescale: 600)
+            do {
+                let cg = try await generator.image(at: cmTime).image
+                images.append(UIImage(cgImage: cg))
+            } catch {
+                continue
+            }
+        }
+        let finalImages = images
+        await MainActor.run {
+            self.thumbnails = finalImages
+        }
+    }
+
+    // MARK: - Haptic Pattern Lifecycle
+
     private func loadHapticPattern() {
-        // Filter out events too close to end
         let safeEvents = events.filter { event in
-            event.time + event.duration < videoDuration - stopBeforeEnd
+            event.time + max(0, event.duration) < videoDuration - stopBeforeEnd
         }
-        
         hapticPatternLoaded = hapticService.loadPattern(safeEvents)
-        
-        if hapticPatternLoaded {
-            print("✅ Haptic pattern loaded with \(safeEvents.count) events")
-        } else {
-            print("⚠️ Failed to load haptic pattern")
-        }
     }
-    
-    private func syncHapticsToVideo() {
-        guard hapticPatternLoaded else {
-            loadHapticPattern()
-            return
-        }
-        
-        // Seek haptics to current video position and start
+
+    private func startHapticPlayback() {
+        if !hapticPatternLoaded { loadHapticPattern() }
+        guard hapticPatternLoaded else { return }
         hapticService.seekAdvancedPlayer(to: currentTime)
         hapticService.startAdvancedPlayer()
     }
-    
-    private func stopHapticsEarly() {
-        if hapticService.isPlaying {
-            hapticService.forceStopAllHaptics()
-            print("🛑 Stopped haptics early (before video end)")
+
+    /// Rebuilds the loaded CHHapticPattern after edits. Debounced so rapid
+    /// slider drags don't thrash the engine.
+    func reloadHapticPattern(resumeIfPlaying: Bool = true) {
+        let now = Date()
+        guard now.timeIntervalSince(lastReloadStamp) >= reloadDebounce else { return }
+        lastReloadStamp = now
+
+        let wasPlaying = isPlaying
+        hapticService.stopAdvancedPlayer()
+        hapticPatternLoaded = false
+        loadHapticPattern()
+        if wasPlaying && resumeIfPlaying {
+            hapticService.seekAdvancedPlayer(to: currentTime)
+            hapticService.startAdvancedPlayer()
         }
     }
-    
-    func cleanup() {
-        // Stop haptics first - FORCE stop to ensure they stop
+
+    // MARK: - Playback Control
+
+    func togglePlayPause() {
+        guard let player = player else { return }
+        if isPlaying {
+            player.pause()
+        } else {
+            // If we're at the end, rewind first
+            if currentTime >= videoDuration - stopBeforeEnd {
+                seek(to: 0)
+            }
+            if !hapticPatternLoaded { loadHapticPattern() }
+            player.play()
+        }
+    }
+
+    func skipBackward(by seconds: Double = 5.0) {
+        seek(to: max(0, currentTime - seconds))
+    }
+
+    func skipForward(by seconds: Double = 5.0) {
+        seek(to: min(videoDuration - stopBeforeEnd, currentTime + seconds))
+    }
+
+    func seek(to time: Double) {
+        let clamped = max(0, min(videoDuration, time))
+        let cmTime = CMTime(seconds: clamped, preferredTimescale: 600)
+        player?.seek(to: cmTime, toleranceBefore: .zero, toleranceAfter: .zero)
+        currentTime = clamped
+        if hapticPatternLoaded {
+            hapticService.seekAdvancedPlayer(to: clamped)
+            if isPlaying { hapticService.startAdvancedPlayer() }
+        }
+    }
+
+    private func handleVideoEnd() {
+        isPlaying = false
         hapticService.forceStopAllHaptics()
-        
+        hapticPatternLoaded = false
+        // Snap playhead to the safe boundary
+        currentTime = max(0, videoDuration - stopBeforeEnd)
+    }
+
+    // MARK: - Event Editing
+
+    /// Insert and sort, then reload pattern.
+    func addEvent(_ event: HapticEvent) {
+        // Don't allow events past the safe boundary
+        guard event.time < videoDuration - stopBeforeEnd else { return }
+        events.append(event)
+        events.sort { $0.time < $1.time }
+        reloadHapticPattern()
+    }
+
+    func updateEvent(id: UUID, intensity: Float? = nil, sharpness: Float? = nil, duration: Double? = nil, time: Double? = nil) {
+        guard let idx = events.firstIndex(where: { $0.id == id }) else { return }
+        var ev = events[idx]
+        if let intensity { ev.intensity = max(0, min(1, intensity)) }
+        if let sharpness { ev.sharpness = max(0, min(1, sharpness)) }
+        if let duration  { ev.duration = max(0, min(videoDuration - ev.time - stopBeforeEnd, duration)) }
+        if let time {
+            ev.time = max(0, min(videoDuration - stopBeforeEnd - 0.01, time))
+        }
+        events[idx] = ev
+        events.sort { $0.time < $1.time }
+        reloadHapticPattern()
+    }
+
+    func deleteEvent(id: UUID) {
+        events.removeAll { $0.id == id }
+        reloadHapticPattern()
+    }
+
+    func clearAllEvents() {
+        events.removeAll()
+        reloadHapticPattern()
+    }
+
+    /// Plays a single event in isolation for the inspector preview button.
+    func previewEvent(_ event: HapticEvent) {
+        var testEvent = event
+        testEvent.duration = min(testEvent.duration, 0.3)
+        hapticService.resetPlayedEvents()
+        hapticService.playEvent(testEvent)
+    }
+
+    // MARK: - Cleanup
+
+    func cleanup() {
+        hapticService.forceStopAllHaptics()
         if let observer = timeObserver {
             player?.removeTimeObserver(observer)
             timeObserver = nil
         }
         rateObserver?.invalidate()
         rateObserver = nil
+        if let endObserver = endObserver {
+            NotificationCenter.default.removeObserver(endObserver)
+            self.endObserver = nil
+        }
         player?.pause()
         player = nil
         hapticPatternLoaded = false
-        NotificationCenter.default.removeObserver(self)
-    }
-    
-    private func handleVideoEnd() {
-        isPlaying = false
-        hapticService.forceStopAllHaptics()
-        hapticPatternLoaded = false
-    }
-    
-    // MARK: - Playback Control
-    
-    func togglePlayPause() {
-        if isPlaying {
-            player?.pause()
-            hapticService.pauseAdvancedPlayer()
-            isPlaying = false
-        } else {
-            // Reload pattern if events were modified
-            if !hapticPatternLoaded {
-                loadHapticPattern()
-            }
-            player?.play()
-            // Haptics will sync via rate observer
-        }
-    }
-    
-    func skipBackward() {
-        let newTime = max(0, currentTime - 5.0)
-        seek(to: newTime)
-    }
-    
-    func skipForward() {
-        let newTime = min(videoDuration - 1.0, currentTime + 5.0)
-        seek(to: newTime)
-    }
-    
-    func seek(to time: Double) {
-        let cmTime = CMTime(seconds: time, preferredTimescale: 600)
-        player?.seek(to: cmTime)
-        currentTime = time
-        
-        // Sync haptics to new position
-        if hapticPatternLoaded {
-            hapticService.seekAdvancedPlayer(to: time)
-        }
-    }
-    
-    // MARK: - Event Editing
-    
-    /// Call after editing events to reload the pattern
-    func reloadHapticPattern() {
-        hapticService.stopAdvancedPlayer()
-        hapticPatternLoaded = false
-        loadHapticPattern()
-    }
-    
-    /// Preview a single haptic event (for testing)
-    func previewEvent(_ event: HapticEvent) {
-        var testEvent = event
-        testEvent.duration = min(testEvent.duration, 0.3)
-        hapticService.resetPlayedEvents()
-        hapticService.playEvent(testEvent)
     }
 }

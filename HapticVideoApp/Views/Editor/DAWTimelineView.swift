@@ -2,7 +2,11 @@
 //  DAWTimelineView.swift
 //  HapticVideoApp
 //
-//  Professional DAW-style timeline with animated event markers and playhead
+//  Multi-lane, Premiere-style timeline. One lane per haptic event type so
+//  events of different types never overlap. Tap on a lane to add an event of
+//  that type at the tap location; long-press to delete an event; drag to move.
+//  A dedicated scrub strip handles playhead dragging so taps and drags on lanes
+//  do not conflict.
 //
 
 import SwiftUI
@@ -10,274 +14,413 @@ import SwiftUI
 struct DAWTimelineView: View {
     @Binding var events: [HapticEvent]
     @Binding var currentTime: Double
+    @Binding var selectedEvent: HapticEvent?
+
     let videoDuration: Double
     let zoomScale: Double
-    let selectedEventType: HapticEventType
-    @Binding var selectedEvent: HapticEvent?
+    let activeTool: EditorTool
     let isPlaying: Bool
+    let thumbnails: [UIImage]
+
     var onSeek: (Double) -> Void
-    var onAddEvent: (Double) -> Void
+    var onAddEvent: (Double, HapticEventType) -> Void
+    var onMoveEvent: (UUID, Double) -> Void
+    var onDeleteEvent: (UUID) -> Void
     var onSelectEvent: (HapticEvent) -> Void
-    
-    @State private var playingEventIDs: Set<UUID> = []
-    
-    private var pixelsPerSecond: CGFloat {
-        60 * zoomScale
-    }
-    
+
+    private static let trackOrder: [HapticEventType] = [.transient, .impact, .continuous]
+
+    private var pixelsPerSecond: CGFloat { EditorDimensions.basePixelsPerSecond * zoomScale }
     private var contentWidth: CGFloat {
-        CGFloat(videoDuration) * pixelsPerSecond
+        max(1, CGFloat(videoDuration) * pixelsPerSecond)
     }
-    
+    private var totalTrackHeight: CGFloat {
+        EditorDimensions.videoTrackHeight + CGFloat(Self.trackOrder.count) * EditorDimensions.hapticTrackHeight
+    }
+
+    @State private var draggingEventID: UUID?
+    @State private var dragOffsetSeconds: Double = 0
+
     var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                // Grid Background
-                gridBackground(size: geometry.size)
-                
-                // Event Lane Background
-                eventLaneBackground(size: geometry.size)
-                
-                // Event Markers
-                ForEach(events) { event in
-                    eventMarker(event: event, height: geometry.size.height)
-                }
-                
-                // Playhead
-                playhead(height: geometry.size.height)
-            }
-            .contentShape(Rectangle())
-            .onTapGesture { location in
-                let time = Double(location.x / pixelsPerSecond)
-                if time >= 0 && time <= videoDuration {
-                    onAddEvent(time)
-                }
-            }
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        let time = Double(value.location.x / pixelsPerSecond)
-                        let clampedTime = max(0, min(videoDuration, time))
-                        onSeek(clampedTime)
+        HStack(spacing: 0) {
+            trackLabelsColumn
+                .frame(width: EditorDimensions.trackHeaderWidth)
+                .background(EditorColors.trackHeader)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                VStack(spacing: 0) {
+                    timeRuler
+                        .frame(width: contentWidth, height: EditorDimensions.timeRulerHeight)
+
+                    videoTrack
+                        .frame(width: contentWidth, height: EditorDimensions.videoTrackHeight)
+
+                    ForEach(Self.trackOrder, id: \.self) { type in
+                        hapticTrack(for: type)
+                            .frame(width: contentWidth, height: EditorDimensions.hapticTrackHeight)
                     }
-            )
-        }
-        .onChange(of: currentTime) { _, newTime in
-            updatePlayingEvents(at: newTime)
+                }
+                .overlay(alignment: .topLeading) {
+                    playhead
+                }
+            }
+            .background(EditorColors.trackBackground)
         }
     }
-    
-    // MARK: - Grid Background
-    
-    private func gridBackground(size: CGSize) -> some View {
-        Canvas { context, canvasSize in
-            // Vertical grid lines (every second)
+
+    // MARK: - Track Labels (sticky left column)
+
+    private var trackLabelsColumn: some View {
+        VStack(spacing: 0) {
+            Color.clear.frame(height: EditorDimensions.timeRulerHeight)
+
+            trackLabel(icon: "film", title: "V1", color: EditorColors.textSecondary, height: EditorDimensions.videoTrackHeight)
+
+            ForEach(Self.trackOrder, id: \.self) { type in
+                trackLabel(
+                    icon: EditorColors.icon(for: type),
+                    title: shortTitle(for: type),
+                    color: EditorColors.color(for: type),
+                    height: EditorDimensions.hapticTrackHeight
+                )
+            }
+        }
+    }
+
+    private func trackLabel(icon: String, title: String, color: Color, height: CGFloat) -> some View {
+        VStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(color)
+            Text(title)
+                .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                .foregroundColor(EditorColors.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: height)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(EditorColors.trackSeparator)
+                .frame(height: 1)
+        }
+    }
+
+    private func shortTitle(for type: HapticEventType) -> String {
+        switch type {
+        case .transient:  return "TAP"
+        case .impact:     return "BEAT"
+        case .continuous: return "HOLD"
+        }
+    }
+
+    // MARK: - Time Ruler (also scrub strip)
+
+    private var timeRuler: some View {
+        Canvas { context, size in
+            let ppr = pixelsPerSecond
+            // Choose label interval based on zoom so labels don't overlap
+            let labelInterval: Int = ppr >= 80 ? 1 : (ppr >= 40 ? 2 : (ppr >= 20 ? 5 : 10))
+
             for second in 0...Int(videoDuration) {
-                let x = CGFloat(second) * pixelsPerSecond
-                let isMajor = second % 5 == 0
-                
+                let x = CGFloat(second) * ppr
+                let isMajor = second % labelInterval == 0
+                let tickHeight: CGFloat = isMajor ? 8 : 4
+
                 context.stroke(
-                    Path { path in
-                        path.move(to: CGPoint(x: x, y: 0))
-                        path.addLine(to: CGPoint(x: x, y: canvasSize.height))
+                    Path { p in
+                        p.move(to: CGPoint(x: x, y: size.height))
+                        p.addLine(to: CGPoint(x: x, y: size.height - tickHeight))
                     },
-                    with: .color(isMajor ? EditorColors.gridLineMajor : EditorColors.gridLine),
+                    with: .color(isMajor ? EditorColors.gridLineMajor : EditorColors.gridLineMinor),
+                    lineWidth: 1
+                )
+
+                if isMajor {
+                    context.draw(
+                        Text(formatTimeShort(Double(second)))
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundColor(EditorColors.textTertiary),
+                        at: CGPoint(x: x + 2, y: 8),
+                        anchor: .leading
+                    )
+                }
+            }
+        }
+        .background(EditorColors.timeRuler)
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    let t = max(0, min(videoDuration, Double(value.location.x / pixelsPerSecond)))
+                    onSeek(t)
+                }
+        )
+    }
+
+    // MARK: - Video Track (frame strip)
+
+    private var videoTrack: some View {
+        ZStack(alignment: .leading) {
+            EditorColors.panel
+
+            if !thumbnails.isEmpty {
+                HStack(spacing: 0) {
+                    ForEach(0..<thumbnails.count, id: \.self) { i in
+                        Image(uiImage: thumbnails[i])
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(
+                                width: contentWidth / CGFloat(thumbnails.count),
+                                height: EditorDimensions.videoTrackHeight
+                            )
+                            .clipped()
+                    }
+                }
+            } else {
+                Rectangle()
+                    .fill(LinearGradient(
+                        colors: [EditorColors.surfaceElevated, EditorColors.panel],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ))
+            }
+
+            // Subtle highlight overlay
+            Rectangle()
+                .fill(EditorColors.accent.opacity(0.06))
+        }
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(EditorColors.trackSeparator)
+                .frame(height: 1)
+        }
+    }
+
+    // MARK: - Haptic Track (one per type)
+
+    private func hapticTrack(for type: HapticEventType) -> some View {
+        let laneColor = EditorColors.color(for: type)
+        let eventsForType = events.filter { $0.type == type }
+
+        return ZStack(alignment: .leading) {
+            // Lane background with subtle grid
+            gridBackground(highlightColor: laneColor)
+
+            // Events on this lane
+            ForEach(eventsForType) { event in
+                eventMarker(event: event, laneColor: laneColor)
+            }
+        }
+        .clipped()
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(EditorColors.trackSeparator)
+                .frame(height: 1)
+        }
+        .contentShape(Rectangle())
+        // Tap to add — works because we use TapGesture (not a 0-distance drag).
+        .onTapGesture { location in
+            let time = Double(location.x / pixelsPerSecond)
+            guard time >= 0 && time <= videoDuration else { return }
+            if activeTool == .select {
+                onSeek(time)
+            } else if let eventType = activeTool.eventType {
+                onAddEvent(time, eventType)
+            } else {
+                onAddEvent(time, type)
+            }
+        }
+    }
+
+    private func gridBackground(highlightColor: Color) -> some View {
+        Canvas { context, size in
+            let ppr = pixelsPerSecond
+            for second in 0...Int(videoDuration) {
+                let x = CGFloat(second) * ppr
+                let isMajor = second % 5 == 0
+                context.stroke(
+                    Path { p in
+                        p.move(to: CGPoint(x: x, y: 0))
+                        p.addLine(to: CGPoint(x: x, y: size.height))
+                    },
+                    with: .color(isMajor ? EditorColors.gridLineMajor : EditorColors.gridLineMinor),
                     lineWidth: 1
                 )
             }
-            
-            // Center line for event lane
-            let centerY = canvasSize.height / 2
+
+            // Faint center line tinted with lane color
+            let centerY = size.height / 2
             context.stroke(
-                Path { path in
-                    path.move(to: CGPoint(x: 0, y: centerY))
-                    path.addLine(to: CGPoint(x: canvasSize.width, y: centerY))
+                Path { p in
+                    p.move(to: CGPoint(x: 0, y: centerY))
+                    p.addLine(to: CGPoint(x: size.width, y: centerY))
                 },
-                with: .color(EditorColors.gridLine),
+                with: .color(highlightColor.opacity(0.08)),
                 lineWidth: 1
             )
         }
+        .background(EditorColors.trackBackground)
     }
-    
-    // MARK: - Event Lane Background
-    
-    private func eventLaneBackground(size: CGSize) -> some View {
-        // Subtle waveform-style background visualization
-        Canvas { context, canvasSize in
-            let centerY = canvasSize.height / 2
-            
-            // Draw fake waveform visualization
-            for x in stride(from: 0, to: canvasSize.width, by: 3) {
-                let normalized = x / canvasSize.width
-                let amplitude = (sin(normalized * 20) * 0.3 + sin(normalized * 47) * 0.2) * 15
-                
-                context.stroke(
-                    Path { path in
-                        path.move(to: CGPoint(x: x, y: centerY - amplitude))
-                        path.addLine(to: CGPoint(x: x, y: centerY + amplitude))
-                    },
-                    with: .color(EditorColors.surfaceHover.opacity(0.5)),
-                    lineWidth: 2
-                )
-            }
-        }
-    }
-    
+
     // MARK: - Event Marker
-    
-    private func eventMarker(event: HapticEvent, height: CGFloat) -> some View {
-        let x = CGFloat(event.time) * pixelsPerSecond
+
+    private func eventMarker(event: HapticEvent, laneColor: Color) -> some View {
         let isSelected = selectedEvent?.id == event.id
-        let isPlaying = playingEventIDs.contains(event.id)
-        let color = EditorColors.color(for: event.type)
-        
-        return ZStack {
-            // Event shape based on type
-            eventShape(for: event.type, isSelected: isSelected, isPlaying: isPlaying)
-                .fill(color)
-                .frame(width: eventWidth(for: event), height: eventHeight(for: event.type))
-                .shadow(
-                    color: isPlaying ? color.opacity(0.8) : .clear,
-                    radius: isPlaying ? 10 : 0
-                )
-                .scaleEffect(isPlaying ? 1.2 : (isSelected ? 1.1 : 1.0))
-                .animation(.spring(response: 0.2, dampingFraction: 0.6), value: isPlaying)
-                .animation(.spring(response: 0.2), value: isSelected)
-            
-            // Duration indicator for continuous events
+        let isActive = isEventActive(event)
+        let intensityScale = CGFloat(0.5 + 0.5 * event.intensity)
+
+        let displayTime: Double = (draggingEventID == event.id) ? event.time + dragOffsetSeconds : event.time
+        let x = CGFloat(max(0, min(videoDuration, displayTime))) * pixelsPerSecond
+
+        return Group {
             if event.type == .continuous && event.duration > 0 {
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(color.opacity(0.4))
-                    .frame(width: CGFloat(event.duration) * pixelsPerSecond, height: 4)
-                    .offset(x: CGFloat(event.duration) * pixelsPerSecond / 2)
-            }
-            
-            // Selection ring
-            if isSelected {
-                Circle()
-                    .stroke(color, lineWidth: 2)
-                    .frame(width: 24, height: 24)
+                continuousEventBar(event: event, laneColor: laneColor, isSelected: isSelected, isActive: isActive, intensityScale: intensityScale)
+                    .position(
+                        x: x + (CGFloat(event.duration) * pixelsPerSecond) / 2,
+                        y: EditorDimensions.hapticTrackHeight / 2
+                    )
+            } else {
+                pointEventMarker(event: event, laneColor: laneColor, isSelected: isSelected, isActive: isActive, intensityScale: intensityScale)
+                    .position(x: x, y: EditorDimensions.hapticTrackHeight / 2)
             }
         }
-        .position(x: x, y: height / 2)
         .onTapGesture {
+            UIHaptics.selectEvent()
             onSelectEvent(event)
         }
-        .onLongPressGesture {
-            UIHaptics.deleteEvent()
-            withAnimation(.spring(response: 0.3)) {
-                events.removeAll { $0.id == event.id }
-            }
-        }
+        .gesture(
+            LongPressGesture(minimumDuration: 0.5)
+                .onEnded { _ in
+                    UIHaptics.deleteEvent()
+                    onDeleteEvent(event.id)
+                }
+        )
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 6)
+                .onChanged { value in
+                    if draggingEventID != event.id {
+                        draggingEventID = event.id
+                        UIHaptics.dragEvent()
+                        onSelectEvent(event)
+                    }
+                    dragOffsetSeconds = Double(value.translation.width / pixelsPerSecond)
+                }
+                .onEnded { value in
+                    let deltaSeconds = Double(value.translation.width / pixelsPerSecond)
+                    let newTime = max(0, min(videoDuration - 0.05, event.time + deltaSeconds))
+                    onMoveEvent(event.id, newTime)
+                    draggingEventID = nil
+                    dragOffsetSeconds = 0
+                    UIHaptics.dropEvent()
+                }
+        )
+        .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isActive)
+        .animation(.spring(response: 0.2), value: isSelected)
     }
-    
-    private func eventShape(for type: HapticEventType, isSelected: Bool, isPlaying: Bool) -> some Shape {
-        switch type {
-        case .transient:
-            return AnyShape(Circle())
-        case .impact:
-            return AnyShape(RoundedRectangle(cornerRadius: 2).rotation(.degrees(45)))
-        case .continuous:
-            return AnyShape(RoundedRectangle(cornerRadius: 4))
-        }
-    }
-    
-    private func eventWidth(for event: HapticEvent) -> CGFloat {
-        switch event.type {
-        case .transient: return 14
-        case .impact: return 12
-        case .continuous: return 16
-        }
-    }
-    
-    private func eventHeight(for type: HapticEventType) -> CGFloat {
-        switch type {
-        case .transient: return 14
-        case .impact: return 12
-        case .continuous: return 12
-        }
-    }
-    
-    // MARK: - Playhead
-    
-    private func playhead(height: CGFloat) -> some View {
-        let x = CGFloat(currentTime) * pixelsPerSecond
-        
+
+    private func pointEventMarker(event: HapticEvent, laneColor: Color, isSelected: Bool, isActive: Bool, intensityScale: CGFloat) -> some View {
+        let baseSize: CGFloat = 18
         return ZStack {
-            // Glow effect when playing
-            if isPlaying {
-                Rectangle()
-                    .fill(
-                        LinearGradient(
-                            colors: [EditorColors.playhead.opacity(0.3), .clear],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .frame(width: 20, height: height)
-                    .position(x: x + 10, y: height / 2)
+            if isSelected {
+                RoundedRectangle(cornerRadius: 6)
+                    .stroke(Color.white, lineWidth: 1.5)
+                    .frame(width: baseSize + 8, height: baseSize + 8)
             }
-            
-            // Playhead line
+
+            Group {
+                if event.type == .transient {
+                    Circle().fill(laneColor)
+                } else {
+                    RoundedRectangle(cornerRadius: 3).fill(laneColor)
+                        .rotationEffect(.degrees(45))
+                }
+            }
+            .frame(width: baseSize * intensityScale, height: baseSize * intensityScale)
+            .shadow(color: isActive ? laneColor.opacity(0.9) : .clear, radius: isActive ? 8 : 0)
+            .scaleEffect(isActive ? 1.2 : 1.0)
+        }
+    }
+
+    private func continuousEventBar(event: HapticEvent, laneColor: Color, isSelected: Bool, isActive: Bool, intensityScale: CGFloat) -> some View {
+        let width = max(8, CGFloat(event.duration) * pixelsPerSecond)
+        let height: CGFloat = 22 * intensityScale
+
+        return ZStack {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 5)
+                    .stroke(Color.white, lineWidth: 1.5)
+                    .frame(width: width + 6, height: height + 6)
+            }
+            RoundedRectangle(cornerRadius: 4)
+                .fill(LinearGradient(
+                    colors: [laneColor.opacity(0.95), laneColor.opacity(0.65)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                ))
+                .frame(width: width, height: height)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 4)
+                        .stroke(laneColor, lineWidth: 1)
+                )
+                .shadow(color: isActive ? laneColor.opacity(0.9) : .clear, radius: isActive ? 8 : 0)
+                .scaleEffect(y: isActive ? 1.15 : 1.0, anchor: .center)
+        }
+    }
+
+    private func isEventActive(_ event: HapticEvent) -> Bool {
+        let tolerance = 0.06
+        if event.type == .continuous && event.duration > 0 {
+            return currentTime >= event.time - tolerance && currentTime <= event.time + event.duration + tolerance
+        }
+        return abs(currentTime - event.time) < tolerance
+    }
+
+    // MARK: - Playhead (spans the entire stacked content)
+
+    private var playhead: some View {
+        let x = CGFloat(currentTime) * pixelsPerSecond
+
+        return ZStack(alignment: .top) {
+            // Vertical line
             Rectangle()
                 .fill(EditorColors.playhead)
-                .frame(width: 2, height: height)
-                .position(x: x, y: height / 2)
-            
-            // Top handle
-            Circle()
+                .frame(width: 1.5)
+                .offset(x: x)
+
+            // Triangle handle on the ruler
+            Triangle()
                 .fill(EditorColors.playhead)
-                .frame(width: 12, height: 12)
-                .overlay(
-                    Circle()
-                        .stroke(Color.white, lineWidth: 2)
-                )
-                .shadow(color: EditorColors.playhead.opacity(0.5), radius: 4)
-                .position(x: x, y: 8)
-            
-            // Bottom handle
-            Circle()
-                .fill(EditorColors.playhead)
-                .frame(width: 12, height: 12)
-                .overlay(
-                    Circle()
-                        .stroke(Color.white, lineWidth: 2)
-                )
-                .shadow(color: EditorColors.playhead.opacity(0.5), radius: 4)
-                .position(x: x, y: height - 8)
+                .frame(width: 12, height: 10)
+                .offset(x: x - 6, y: EditorDimensions.timeRulerHeight - 10)
         }
-        .animation(.linear(duration: 0.02), value: currentTime)
+        .frame(
+            width: max(contentWidth, 1),
+            height: EditorDimensions.timeRulerHeight + EditorDimensions.videoTrackHeight + CGFloat(Self.trackOrder.count) * EditorDimensions.hapticTrackHeight,
+            alignment: .topLeading
+        )
+        .allowsHitTesting(false)
+        .animation(.linear(duration: isPlaying ? 0.05 : 0.0), value: currentTime)
     }
-    
-    // MARK: - Playing Events Detection
-    
-    private func updatePlayingEvents(at time: Double) {
-        let tolerance: Double = 0.05
-        
-        let newPlayingIDs = Set(events.filter { event in
-            abs(event.time - time) < tolerance ||
-            (event.type == .continuous && time >= event.time && time <= event.time + event.duration)
-        }.map { $0.id })
-        
-        if newPlayingIDs != playingEventIDs {
-            playingEventIDs = newPlayingIDs
-        }
+
+    // MARK: - Helpers
+
+    private func formatTimeShort(_ time: Double) -> String {
+        let minutes = Int(time) / 60
+        let seconds = Int(time) % 60
+        return String(format: "%d:%02d", minutes, seconds)
     }
 }
 
-// MARK: - AnyShape Helper
+// MARK: - Triangle Shape
 
-struct AnyShape: Shape {
-    private let builder: (CGRect) -> Path
-    
-    init<S: Shape>(_ shape: S) {
-        builder = { rect in
-            shape.path(in: rect)
-        }
-    }
-    
+struct Triangle: Shape {
     func path(in rect: CGRect) -> Path {
-        builder(rect)
+        Path { p in
+            p.move(to: CGPoint(x: rect.midX, y: rect.maxY))
+            p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+            p.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
+            p.closeSubpath()
+        }
     }
 }
 
@@ -286,7 +429,6 @@ struct AnyShape: Shape {
 #Preview {
     ZStack {
         EditorColors.background.ignoresSafeArea()
-        
         DAWTimelineView(
             events: .constant([
                 HapticEvent(time: 1.0, intensity: 0.8, sharpness: 0.5, duration: 0, type: .transient),
@@ -294,16 +436,18 @@ struct AnyShape: Shape {
                 HapticEvent(time: 4.0, intensity: 0.7, sharpness: 0.6, duration: 0.5, type: .continuous)
             ]),
             currentTime: .constant(2.0),
+            selectedEvent: .constant(nil),
             videoDuration: 10.0,
             zoomScale: 1.5,
-            selectedEventType: .transient,
-            selectedEvent: .constant(nil),
+            activeTool: .transient,
             isPlaying: true,
+            thumbnails: [],
             onSeek: { _ in },
-            onAddEvent: { _ in },
+            onAddEvent: { _, _ in },
+            onMoveEvent: { _, _ in },
+            onDeleteEvent: { _ in },
             onSelectEvent: { _ in }
         )
-        .frame(height: 100)
-        .padding()
+        .frame(height: 220)
     }
 }
