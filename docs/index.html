@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HapticVideoApp — Feel every frame</title>
+  <meta name="description" content="A Premiere-Pro-grade haptic editor for iOS. Generate haptics from any video's audio, fine-tune them on a multi-lane timeline, and share." />
+  <meta name="theme-color" content="#0A0A0F" />
+
+  <meta property="og:title" content="HapticVideoApp — Feel every frame" />
+  <meta property="og:description" content="Premiere-style haptic editor for iOS. Auto-generate haptics from audio, fine-tune on a multi-lane timeline, ship to the world." />
+  <meta property="og:type" content="website" />
+  <meta property="og:image" content="assets/editor-mockup.svg" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" />
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="premium.css" />
+
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' x2='1' y1='0' y2='1'%3E%3Cstop offset='0' stop-color='%23A879FF'/%3E%3Cstop offset='1' stop-color='%237044E0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='16' fill='url(%23g)'/%3E%3Cpath d='M16 36 q4 -16 12 -16 q4 0 4 8 q0 8 4 8 q4 0 4 -8 q0 -8 4 -8 q8 0 12 16' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"/>
+</head>
+<body>
+
+  <!-- ── Ambient blobs & particles ──────────────────────────── -->
+  <div class="ambient-blob ambient-blob-1 animate-float"></div>
+  <div class="ambient-blob ambient-blob-2 animate-float" style="animation-delay:-3s"></div>
+  <div class="ambient-blob ambient-blob-3 animate-float" style="animation-delay:-6s"></div>
+
+  <div class="wh-orb" style="width:780px;height:780px;left:50%;top:360px;background:radial-gradient(circle,rgba(140,92,255,.08) 0%,rgba(0,212,255,.05) 40%,transparent 70%)"></div>
+
+  <!-- Hero particles (positioned via inline styles) -->
+  <div class="wh-dot"        style="top:14%; left:9%;  animation: wh-f1 6.4s ease-in-out infinite; animation-delay: 0s;"></div>
+  <div class="wh-dot cyan"   style="top:22%; left:88%; animation: wh-f2 7.8s ease-in-out infinite; animation-delay:.9s;"></div>
+  <div class="wh-dot pink"   style="top:46%; left:6%;  animation: wh-f3 5.8s ease-in-out infinite; animation-delay:1.6s;"></div>
+  <div class="wh-dot"        style="top:58%; left:93%; animation: wh-f4 8.4s ease-in-out infinite; animation-delay:.4s;"></div>
+  <div class="wh-dot orange" style="top:72%; left:52%; animation: wh-f5 6.8s ease-in-out infinite; animation-delay:1.2s;"></div>
+  <div class="wh-dot cyan"   style="top:34%; left:48%; animation: wh-f6 7.4s ease-in-out infinite; animation-delay:.6s;"></div>
+
+  <!-- additional drifting decorative sparks injected by JS -->
+  <div id="spark-host" style="position:fixed; inset:0; pointer-events:none; z-index:1;"></div>
+
+  <!-- ── Nav ────────────────────────────────────────────────── -->
+  <nav class="nav">
+    <div class="nav-inner">
+      <a href="#" class="brand">
+        <span class="logo">📳</span>
+        HapticVideoApp
+      </a>
+      <ul class="nav-links">
+        <li><a href="#editor">Editor</a></li>
+        <li><a href="#timeline">Timeline</a></li>
+        <li><a href="#features">Features</a></li>
+        <li><a href="#how">How it works</a></li>
+      </ul>
+      <a href="https://github.com/banthia14aman/HapticVideoApp" class="nav-cta">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.44 9.8 8.21 11.4.6.11.82-.26.82-.58 0-.29-.01-1.04-.02-2.05-3.34.72-4.05-1.61-4.05-1.61-.55-1.4-1.34-1.77-1.34-1.77-1.1-.75.08-.74.08-.74 1.21.09 1.85 1.24 1.85 1.24 1.07 1.84 2.81 1.31 3.49 1 .11-.78.42-1.31.76-1.61-2.67-.3-5.47-1.33-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.3-.54-1.52.12-3.17 0 0 1.01-.32 3.3 1.23a11.5 11.5 0 0 1 6 0c2.29-1.55 3.3-1.23 3.3-1.23.66 1.65.24 2.87.12 3.17.77.84 1.24 1.91 1.24 3.22 0 4.61-2.8 5.63-5.48 5.92.43.37.81 1.1.81 2.22 0 1.61-.01 2.91-.01 3.3 0 .32.22.7.83.58A12 12 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </nav>
+
+  <!-- ── Hero ───────────────────────────────────────────────── -->
+  <header class="hero">
+    <p class="eyebrow">Feel · Form · Frame</p>
+
+    <div class="tag">
+      <span class="pulse"></span>
+      Built with SwiftUI · CoreHaptics · Firebase
+    </div>
+
+    <h1 class="mega-headline">
+      <span class="ltr">F</span><span class="ltr">E</span><span class="ltr">E</span><span class="ltr">L</span>
+      <span style="display:inline-block;width:.3em"></span>
+      <span class="ltr">E</span><span class="ltr">V</span><span class="ltr">E</span><span class="ltr">R</span><span class="ltr">Y</span>
+      <br/>
+      <span class="ltr gradient-text">F</span><span class="ltr gradient-text">R</span><span class="ltr gradient-text">A</span><span class="ltr gradient-text">M</span><span class="ltr gradient-text">E</span>
+      <span class="ltr">.</span>
+    </h1>
+
+    <p class="hero-sub">
+      An iOS app that auto-generates haptics from a video's audio and lets you fine-tune them on a Premiere-style multi-lane timeline. Tap, beat, hold — feel the cut.
+    </p>
+
+    <div class="hero-ctas">
+      <a class="btn btn-primary" href="https://github.com/banthia14aman/HapticVideoApp">
+        Get the source
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M6 3 l5 5 -5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </a>
+      <a class="btn btn-outline" href="#editor">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3 2 v12 l11 -6 z"/></svg>
+        See the editor
+      </a>
+    </div>
+
+    <div class="platform-pills">
+      <span class="pill">📱 iOS 17+</span>
+      <span class="pill">🎬 SwiftUI</span>
+      <span class="pill">🌊 CoreHaptics</span>
+      <span class="pill muted-pill">🔥 Firebase cloud storage</span>
+    </div>
+  </header>
+
+  <!-- ── Marquee strip ──────────────────────────────────────── -->
+  <div class="marquee-wrap" aria-hidden="true">
+    <div class="marquee">
+      <span class="marquee-item"><span class="dot"></span>multi-lane timeline</span>
+      <span class="marquee-item"><span class="dot"></span>FFT audio analysis</span>
+      <span class="marquee-item"><span class="dot"></span>CHHapticAdvancedPatternPlayer</span>
+      <span class="marquee-item"><span class="dot"></span>pinch-to-zoom</span>
+      <span class="marquee-item"><span class="dot"></span>Premiere-style chrome</span>
+      <span class="marquee-item"><span class="dot"></span>frame-accurate scrub</span>
+      <span class="marquee-item"><span class="dot"></span>tap · beat · hold</span>
+      <span class="marquee-item"><span class="dot"></span>cloud sync</span>
+      <!-- duplicate for seamless loop -->
+      <span class="marquee-item"><span class="dot"></span>multi-lane timeline</span>
+      <span class="marquee-item"><span class="dot"></span>FFT audio analysis</span>
+      <span class="marquee-item"><span class="dot"></span>CHHapticAdvancedPatternPlayer</span>
+      <span class="marquee-item"><span class="dot"></span>pinch-to-zoom</span>
+      <span class="marquee-item"><span class="dot"></span>Premiere-style chrome</span>
+      <span class="marquee-item"><span class="dot"></span>frame-accurate scrub</span>
+      <span class="marquee-item"><span class="dot"></span>tap · beat · hold</span>
+      <span class="marquee-item"><span class="dot"></span>cloud sync</span>
+    </div>
+  </div>
+
+  <!-- ── Stats ──────────────────────────────────────────────── -->
+  <section class="section-pad">
+    <div class="container">
+      <div class="up">
+        <p class="section-eyebrow">By the numbers</p>
+        <h2 class="section-heading">A production-grade haptic toolkit, in your pocket.</h2>
+      </div>
+      <div class="stats">
+        <div class="stat up">
+          <div class="lbl">Haptic lanes</div>
+          <div class="num">3</div>
+          <div class="desc">Dedicated lanes for Tap, Beat, and Hold so events of different types never collide visually.</div>
+        </div>
+        <div class="stat up" style="transition-delay:.05s">
+          <div class="lbl">Playhead refresh</div>
+          <div class="num">30<span class="unit">hz</span></div>
+          <div class="desc">Smooth scrub without thrashing SwiftUI's render loop or burning battery.</div>
+        </div>
+        <div class="stat up" style="transition-delay:.1s">
+          <div class="lbl">Zoom range</div>
+          <div class="num">0.5–4<span class="unit">×</span></div>
+          <div class="desc">Pinch to zoom from a whole-video overview down to single-frame precision.</div>
+        </div>
+        <div class="stat up" style="transition-delay:.15s">
+          <div class="lbl">Auto-onset detection</div>
+          <div class="num">FFT</div>
+          <div class="desc">Spectral-flux analysis flags transients, beats, and sustained sections from raw audio.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Editor showcase ────────────────────────────────────── -->
+  <section id="editor" class="section-pad" style="border-top: 1px solid var(--border-soft);">
+    <div class="container">
+      <div class="showcase">
+        <div class="phone-frame up">
+          <img src="assets/editor-mockup.svg" alt="HapticVideoApp editor on an iPhone, showing the video monitor, transport bar, tool palette, multi-lane timeline, and event inspector." />
+        </div>
+        <div class="copy-block up" style="transition-delay:.1s">
+          <p class="section-eyebrow">The editor</p>
+          <h3>Premiere Pro, sized for your thumb.</h3>
+          <p>
+            A familiar mobile DAW chrome with a top bar, video monitor with floating timecode, transport row, tool palette, and a multi-lane timeline that locks frames to events.
+          </p>
+          <ul>
+            <li>Live timecode pill on the monitor, color-coded with the playback state</li>
+            <li>Tool palette: Select, Tap, Beat, Hold — pick a tool, tap the lane, drop an event</li>
+            <li>Inspector slides up from below with intensity, sharpness, and duration sliders</li>
+            <li>Pinch-to-zoom and tap-to-scrub on the ruler — no thumb-cramp</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Timeline detail ────────────────────────────────────── -->
+  <section id="timeline" class="section-pad" style="background:rgba(255,255,255,.015); border-top:1px solid var(--border-soft);">
+    <div class="container">
+      <div class="up center">
+        <p class="section-eyebrow">The timeline</p>
+        <h2 class="section-heading" style="margin: 0 auto;">A multi-lane timeline that thinks like a video editor.</h2>
+        <p class="section-sub" style="margin-left:auto; margin-right:auto;">
+          Video on top. Three haptic lanes underneath — one per event type. A sticky left column so you always know what you're editing, even when scrolled three zoom-levels deep.
+        </p>
+      </div>
+
+      <div class="timeline-shot up" style="transition-delay:.1s">
+        <img src="assets/timeline-mockup.svg" alt="A wide multi-lane timeline showing the V1 video strip, TAP lane with orange circles, BEAT lane with cyan diamonds, HOLD lane with violet continuous bars, and a red playhead." />
+        <div class="caption">
+          <span><span class="dot-tap"></span> Transient (tap) events</span>
+          <span><span class="dot-beat"></span> Impact (beat) events</span>
+          <span><span class="dot-hold"></span> Continuous (hold) events</span>
+          <span><span class="dot-play"></span> Playhead</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Philosophy pills ───────────────────────────────────── -->
+  <section class="section-pad">
+    <div class="container center up">
+      <p class="section-eyebrow">Design philosophy</p>
+      <div class="philosophy">
+        <div class="pill-card">Feel the cut</div>
+        <div class="pill-card">Touch first</div>
+        <div class="pill-card">Frame-true</div>
+        <div class="pill-card">No friction</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Features grid ──────────────────────────────────────── -->
+  <section id="features" class="section-pad" style="border-top:1px solid var(--border-soft);">
+    <div class="container">
+      <div class="up" style="margin-bottom: 16px;">
+        <p class="section-eyebrow">Why HapticVideoApp</p>
+        <h2 class="section-heading">Designed by an editor. Built by an engineer.</h2>
+        <p class="section-sub">A focused stack of features that get out of your way and let you feel the cut.</p>
+      </div>
+
+      <div class="feature-grid">
+        <div class="feature-card up">
+          <div class="feature-icon">🎚️</div>
+          <h4>Multi-lane timeline</h4>
+          <p>One lane per event type so markers never collide. Sticky left header column, adaptive ruler labels, pinch-to-zoom from 0.5× to 4×.</p>
+        </div>
+        <div class="feature-card up" style="transition-delay:.05s">
+          <div class="feature-icon cyan">⚡</div>
+          <h4>Frame-accurate sync</h4>
+          <p>CHHapticAdvancedPatternPlayer is locked to AVPlayer state. Seeks, edits, and re-edits all re-sync the engine without dropped events.</p>
+        </div>
+        <div class="feature-card up" style="transition-delay:.1s">
+          <div class="feature-icon orange">🎼</div>
+          <h4>Auto-generate from audio</h4>
+          <p>FFT + spectral-flux analysis converts your video's audio into a first-pass haptic pattern, then you fine-tune on the timeline.</p>
+        </div>
+        <div class="feature-card up" style="transition-delay:.15s">
+          <div class="feature-icon pink">🎯</div>
+          <h4>Three event types</h4>
+          <p>Tap (transient), Beat (impact), Hold (continuous). Each one has intensity, sharpness, and — for holds — a duration slider.</p>
+        </div>
+        <div class="feature-card up" style="transition-delay:.2s">
+          <div class="feature-icon emerald">☁️</div>
+          <h4>Cloud storage</h4>
+          <p>Firebase Firestore + Storage means your videos and patterns live everywhere. Share a link, feel the haptics.</p>
+        </div>
+        <div class="feature-card up" style="transition-delay:.25s">
+          <div class="feature-icon amber">📐</div>
+          <h4>Tactile UI</h4>
+          <p>Every button, slider, and event press has its own UIKit haptic. Editing haptics with haptic feedback feels right.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── How it works ───────────────────────────────────────── -->
+  <section id="how" class="section-pad" style="background:rgba(255,255,255,.015); border-top:1px solid var(--border-soft);">
+    <div class="container">
+      <div class="up center" style="margin-bottom: 12px;">
+        <p class="section-eyebrow">How it works</p>
+        <h2 class="section-heading" style="margin: 0 auto;">From silent clip to felt experience in four steps.</h2>
+      </div>
+
+      <div class="steps">
+        <div class="step up">
+          <div class="num">01 · IMPORT</div>
+          <h5>Pick a video</h5>
+          <p>Grab any clip from your library or record a new one — HapticVideoApp pulls thumbnails and duration on the fly.</p>
+        </div>
+        <div class="step up" style="transition-delay:.07s">
+          <div class="num">02 · ANALYZE</div>
+          <h5>Audio → haptics</h5>
+          <p>The audio analyzer runs FFT + spectral-flux to detect onsets and energy peaks, producing a first-pass haptic pattern.</p>
+        </div>
+        <div class="step up" style="transition-delay:.14s">
+          <div class="num">03 · EDIT</div>
+          <h5>Fine-tune on the timeline</h5>
+          <p>Drop, drag, tweak intensity. Preview a single event or scrub the whole clip. Pinch to zoom in on the cut you care about.</p>
+        </div>
+        <div class="step up" style="transition-delay:.21s">
+          <div class="num">04 · SHARE</div>
+          <h5>Cloud & feel</h5>
+          <p>Your finished video and its haptic pattern upload to Firebase and become a shareable link for anyone on iOS to feel.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Connected badge ────────────────────────────────────── -->
+  <section class="connected-section">
+    <div class="connected-wrap up">
+      <span class="connected-badge">Connected</span>
+    </div>
+    <p class="connected-quote up" style="transition-delay:.1s">
+      A video without haptics is half a story. <em>Feel the other half.</em>
+    </p>
+  </section>
+
+  <!-- ── CTA ────────────────────────────────────────────────── -->
+  <section class="cta">
+    <div class="container">
+      <div class="up">
+        <h2>Build it yourself.</h2>
+        <p>Clone the repo, open it in Xcode 16+, drop in a Firebase config, and run. The full source for the editor, the timeline, and the audio analyzer is on GitHub.</p>
+      </div>
+      <div class="code-row up" style="transition-delay:.05s">
+        <code id="install-cmd">git clone https://github.com/banthia14aman/HapticVideoApp.git</code>
+        <button id="copy-btn" data-copy="git clone https://github.com/banthia14aman/HapticVideoApp.git">Copy</button>
+      </div>
+      <div class="hero-ctas up" style="margin-top:8px; transition-delay:.1s">
+        <a class="btn btn-primary" href="https://github.com/banthia14aman/HapticVideoApp">
+          Open repository
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M6 3 l5 5 -5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </a>
+        <a class="btn btn-outline" href="https://github.com/banthia14aman/HapticVideoApp/issues">Report an issue</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Footer ─────────────────────────────────────────────── -->
+  <footer class="footer">
+    <a href="#" class="logo-mark" aria-label="HapticVideoApp">📳</a>
+    <div>HapticVideoApp · An iOS haptic editor built with SwiftUI + CoreHaptics + Firebase.</div>
+    <div class="footer-links">
+      <a href="https://github.com/banthia14aman/HapticVideoApp">GitHub</a>
+      <a href="https://github.com/banthia14aman/HapticVideoApp/blob/main/LICENSE">License</a>
+      <a href="https://github.com/banthia14aman/HapticVideoApp/issues">Issues</a>
+    </div>
+    <div style="margin-top:18px">© Aman Banthia · MIT License</div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

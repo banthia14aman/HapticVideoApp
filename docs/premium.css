@@ -1,0 +1,172 @@
+/* ═══════════════════════════════════════════════════════════════
+   HapticVideoApp premium.css — particles, orbs, ambient blobs,
+   animated gradients. Layered on top of styles.css.
+   ═══════════════════════════════════════════════════════════════ */
+
+@property --wh-ang {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+/* ═══ AMBIENT ORB ═══════════════════════════════════════════════ */
+.wh-orb {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  will-change: transform, opacity;
+  z-index: 0;
+  animation: wh-orb-pulse 5s ease-in-out infinite;
+  transform: translate(-50%, -50%);
+}
+@keyframes wh-orb-pulse {
+  0%,100% { transform: translate(-50%, -50%) scale(1);    opacity: .55; }
+  50%     { transform: translate(-50%, -50%) scale(1.18); opacity: .85; }
+}
+
+/* ═══ AMBIENT BLOBS ════════════════════════════════════════════ */
+.ambient-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(60px);
+  pointer-events: none;
+  z-index: 0;
+  opacity: .6;
+}
+.ambient-blob-1 {
+  width: 540px; height: 540px;
+  background: radial-gradient(circle, rgba(140,92,255,.35), transparent 70%);
+  top: -200px; left: -160px;
+}
+.ambient-blob-2 {
+  width: 480px; height: 480px;
+  background: radial-gradient(circle, rgba(0,212,255,.32), transparent 70%);
+  top: 260px; right: -160px;
+}
+.ambient-blob-3 {
+  width: 380px; height: 380px;
+  background: radial-gradient(circle, rgba(236,72,153,.22), transparent 70%);
+  bottom: -120px; left: 30%;
+}
+.animate-float { animation: float 8s ease-in-out infinite; }
+@keyframes float {
+  0%,100% { transform: translateY(0) scale(1); }
+  50%     { transform: translateY(-22px) scale(1.04); }
+}
+
+/* ═══ FLOATING PARTICLES ═══════════════════════════════════════ */
+.wh-dot {
+  position: fixed;
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 12px 4px rgba(140,92,255,.55);
+  pointer-events: none;
+  z-index: 2;
+  will-change: transform, opacity;
+}
+.wh-dot.cyan {
+  background: var(--cyan);
+  box-shadow: 0 0 12px 4px rgba(0,212,255,.55);
+}
+.wh-dot.pink {
+  background: var(--pink);
+  box-shadow: 0 0 12px 4px rgba(236,72,153,.55);
+}
+.wh-dot.orange {
+  background: var(--accent-3);
+  box-shadow: 0 0 12px 4px rgba(255,138,76,.55);
+}
+
+@keyframes wh-f1 {
+  0%,100% { transform: translate(0, 0);       opacity: .7; }
+  35%     { transform: translate(10px,-22px); opacity: 1;  }
+  65%     { transform: translate(-6px,-34px); opacity: .8; }
+}
+@keyframes wh-f2 {
+  0%,100% { transform: translate(0, 0);        opacity: .6; }
+  40%     { transform: translate(-16px,-20px); opacity: .9; }
+  72%     { transform: translate(8px,-28px);   opacity: .7; }
+}
+@keyframes wh-f3 {
+  0%,100% { transform: translate(0, 0);       opacity: .8; }
+  30%     { transform: translate(14px,-18px); opacity: 1;  }
+  62%     { transform: translate(-4px,-30px); opacity: .6; }
+}
+@keyframes wh-f4 {
+  0%,100% { transform: translate(0, 0);        opacity: .5; }
+  48%     { transform: translate(-10px,-26px); opacity: .9; }
+  78%     { transform: translate(12px,-14px);  opacity: .7; }
+}
+@keyframes wh-f5 {
+  0%,100% { transform: translate(0, 0);       opacity: .7; }
+  28%     { transform: translate(7px,-32px);  opacity: 1;  }
+  58%     { transform: translate(-13px,-18px); opacity: .6; }
+}
+@keyframes wh-f6 {
+  0%,100% { transform: translate(0, 0);        opacity: .5; }
+  35%     { transform: translate(18px,-28px);  opacity: .9; }
+  70%     { transform: translate(-8px,-18px);  opacity: .7; }
+}
+
+/* ═══ DRIFTING HAPTIC SPARKS (canvas-style background) ═════════ */
+.spark {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 50%;
+  width: 2px; height: 2px;
+  background: #fff;
+  opacity: .35;
+  will-change: transform;
+}
+
+/* ═══ HOVER CARD GLOW (for feature cards) ══════════════════════ */
+.feature-card { transition: box-shadow .3s ease, transform .2s ease, border-color .25s ease, background .25s ease !important; }
+.feature-card:hover {
+  box-shadow:
+    0 0 0 1px rgba(140,92,255,.18),
+    0 18px 50px rgba(0,0,0,.45) !important;
+}
+
+/* ═══ BUTTON GLOW ═════════════════════════════════════════════ */
+.btn-primary:hover {
+  box-shadow:
+    0 0 26px rgba(140,92,255,.38),
+    0 0 60px rgba(140,92,255,.18),
+    inset 0 1px 0 rgba(255,255,255,.18) !important;
+}
+
+/* ═══ HAPTIC WAVE (for hero) ══════════════════════════════════ */
+.haptic-wave-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: .5;
+  z-index: 0;
+  background:
+    radial-gradient(circle at 20% 30%, rgba(140,92,255,.12), transparent 40%),
+    radial-gradient(circle at 80% 70%, rgba(91,192,255,.12), transparent 40%);
+}
+
+/* ═══ NAV ACTIVE UNDERLINE ════════════════════════════════════ */
+.nav-links a {
+  position: relative;
+  padding-bottom: 4px;
+}
+.nav-links a::after {
+  content: '';
+  position: absolute; bottom: -2px; left: 0; right: 0;
+  height: 1px; background: var(--accent);
+  transform: scaleX(0); transform-origin: left;
+  transition: transform .3s;
+}
+.nav-links a:hover::after { transform: scaleX(1); }
+
+/* ═══ REDUCED MOTION ══════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

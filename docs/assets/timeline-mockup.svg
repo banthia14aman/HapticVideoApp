@@ -1,0 +1,143 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 360" width="900" height="360" role="img" aria-label="Multi-lane haptic timeline detail">
+  <defs>
+    <linearGradient id="bg2" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#1A1B1E"/><stop offset="1" stop-color="#121315"/>
+    </linearGradient>
+    <linearGradient id="violetEv2" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#A879FF"/><stop offset="1" stop-color="#7044E0"/>
+    </linearGradient>
+    <linearGradient id="orangeEv2" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#FFB07A"/><stop offset="1" stop-color="#FF8A4C"/>
+    </linearGradient>
+    <linearGradient id="cyanEv2" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#7FD2FF"/><stop offset="1" stop-color="#3FB0F5"/>
+    </linearGradient>
+    <linearGradient id="filmStrip2" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0" stop-color="#1F2937"/>
+      <stop offset=".2" stop-color="#374151"/>
+      <stop offset=".4" stop-color="#1F2937"/>
+      <stop offset=".55" stop-color="#475569"/>
+      <stop offset=".75" stop-color="#1F2937"/>
+      <stop offset="1" stop-color="#475569"/>
+    </linearGradient>
+    <filter id="evShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="2"/>
+      <feOffset dy="1.5"/>
+      <feComponentTransfer><feFuncA type="linear" slope=".4"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glowPlay">
+      <feGaussianBlur stdDeviation="4" result="b"/>
+      <feFlood flood-color="#F26A6A" flood-opacity=".55"/>
+      <feComposite in2="b" operator="in"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <rect width="900" height="360" rx="20" fill="url(#bg2)" stroke="rgba(255,255,255,.06)"/>
+
+  <!-- track header -->
+  <rect x="0" y="0" width="100" height="360" fill="#1E1F22" rx="20"/>
+  <rect x="20" y="0" width="80" height="360" fill="#1E1F22"/>
+
+  <!-- ruler -->
+  <rect x="100" y="0" width="800" height="36" fill="#1E1F22"/>
+  <g fill="#6B6C72" font-family="ui-monospace, SF Mono, Menlo, monospace" font-size="11" font-weight="600">
+    <text x="112" y="22">0:00</text>
+    <text x="212" y="22">0:01</text>
+    <text x="312" y="22">0:02</text>
+    <text x="412" y="22">0:03</text>
+    <text x="512" y="22">0:04</text>
+    <text x="612" y="22">0:05</text>
+    <text x="712" y="22">0:06</text>
+    <text x="812" y="22">0:07</text>
+  </g>
+
+  <!-- V1 -->
+  <g transform="translate(0 36)">
+    <rect x="0" y="0" width="100" height="62" fill="#1E1F22"/>
+    <g transform="translate(38 22)" fill="#9A9BA1"><path d="M2 0 h16 v12 h-16 z m1 1 v10 h2 v-10 z m12 0 v10 h2 v-10 z"/></g>
+    <text x="50" y="52" text-anchor="middle" fill="#9A9BA1" font-family="ui-monospace, SF Mono, Menlo, monospace" font-size="11" font-weight="700">V1</text>
+    <rect x="100" y="0" width="800" height="62" fill="url(#filmStrip2)"/>
+    <rect x="100" y="0" width="800" height="62" fill="#8C5CFF" opacity=".06"/>
+    <rect x="100" y="61" width="800" height="1" fill="rgba(0,0,0,.5)"/>
+  </g>
+
+  <!-- TAP -->
+  <g transform="translate(0 98)">
+    <rect x="0" y="0" width="100" height="68" fill="#1E1F22"/>
+    <circle cx="50" cy="28" r="7" fill="#FF8A4C"/>
+    <text x="50" y="56" text-anchor="middle" fill="#9A9BA1" font-family="ui-monospace, SF Mono, Menlo, monospace" font-size="11" font-weight="700">TAP</text>
+    <rect x="100" y="0" width="800" height="68" fill="#232428"/>
+    <line x1="100" y1="67" x2="900" y2="67" stroke="rgba(0,0,0,.5)"/>
+    <!-- events with intensity scaling -->
+    <circle cx="150" cy="34" r="12" fill="url(#orangeEv2)" filter="url(#evShadow)"/>
+    <circle cx="240" cy="34" r="10" fill="url(#orangeEv2)" filter="url(#evShadow)"/>
+    <circle cx="306" cy="34" r="9" fill="url(#orangeEv2)" filter="url(#evShadow)"/>
+    <circle cx="380" cy="34" r="14" fill="url(#orangeEv2)" filter="url(#evShadow)"/>
+    <circle cx="480" cy="34" r="11" fill="url(#orangeEv2)" filter="url(#evShadow)"/>
+    <circle cx="560" cy="34" r="9" fill="url(#orangeEv2)" filter="url(#evShadow)"/>
+    <circle cx="640" cy="34" r="12" fill="url(#orangeEv2)" filter="url(#evShadow)"/>
+    <circle cx="730" cy="34" r="10" fill="url(#orangeEv2)" filter="url(#evShadow)"/>
+    <circle cx="820" cy="34" r="13" fill="url(#orangeEv2)" filter="url(#evShadow)"/>
+  </g>
+
+  <!-- BEAT -->
+  <g transform="translate(0 166)">
+    <rect x="0" y="0" width="100" height="68" fill="#1E1F22"/>
+    <rect x="40" y="20" width="14" height="14" fill="#5BC0FF" transform="rotate(45 47 27)"/>
+    <text x="50" y="56" text-anchor="middle" fill="#9A9BA1" font-family="ui-monospace, SF Mono, Menlo, monospace" font-size="11" font-weight="700">BEAT</text>
+    <rect x="100" y="0" width="800" height="68" fill="#232428"/>
+    <line x1="100" y1="67" x2="900" y2="67" stroke="rgba(0,0,0,.5)"/>
+    <!-- diamonds — selected marker on one -->
+    <rect x="180" y="22" width="18" height="18" rx="3" fill="url(#cyanEv2)" transform="rotate(45 189 31)" filter="url(#evShadow)"/>
+
+    <!-- selected event with selection ring -->
+    <g transform="translate(380 34)">
+      <rect x="-13" y="-13" width="26" height="26" rx="4" fill="none" stroke="#fff" stroke-width="1.5"/>
+      <rect x="-9" y="-9" width="18" height="18" rx="3" fill="url(#cyanEv2)" transform="rotate(45)" filter="url(#evShadow)"/>
+    </g>
+
+    <rect x="510" y="22" width="16" height="16" rx="3" fill="url(#cyanEv2)" transform="rotate(45 518 30)" filter="url(#evShadow)"/>
+    <rect x="660" y="22" width="20" height="20" rx="3" fill="url(#cyanEv2)" transform="rotate(45 670 32)" filter="url(#evShadow)"/>
+    <rect x="800" y="22" width="18" height="18" rx="3" fill="url(#cyanEv2)" transform="rotate(45 809 31)" filter="url(#evShadow)"/>
+  </g>
+
+  <!-- HOLD -->
+  <g transform="translate(0 234)">
+    <rect x="0" y="0" width="100" height="68" fill="#1E1F22"/>
+    <rect x="34" y="22" width="32" height="12" rx="2" fill="#A879FF"/>
+    <text x="50" y="56" text-anchor="middle" fill="#9A9BA1" font-family="ui-monospace, SF Mono, Menlo, monospace" font-size="11" font-weight="700">HOLD</text>
+    <rect x="100" y="0" width="800" height="68" fill="#232428"/>
+    <line x1="100" y1="67" x2="900" y2="67" stroke="rgba(0,0,0,.5)"/>
+    <!-- continuous bars varying widths -->
+    <rect x="120" y="18" width="120" height="32" rx="5" fill="url(#violetEv2)" filter="url(#evShadow)"/>
+    <rect x="120" y="18" width="120" height="32" rx="5" fill="none" stroke="#A879FF" stroke-width="1.5"/>
+
+    <rect x="288" y="22" width="170" height="24" rx="5" fill="url(#violetEv2)" filter="url(#evShadow)"/>
+    <rect x="288" y="22" width="170" height="24" rx="5" fill="none" stroke="#A879FF" stroke-width="1.5"/>
+
+    <rect x="500" y="16" width="220" height="36" rx="5" fill="url(#violetEv2)" filter="url(#evShadow)"/>
+    <rect x="500" y="16" width="220" height="36" rx="5" fill="none" stroke="#A879FF" stroke-width="1.5"/>
+
+    <rect x="760" y="20" width="120" height="28" rx="5" fill="url(#violetEv2)" filter="url(#evShadow)"/>
+    <rect x="760" y="20" width="120" height="28" rx="5" fill="none" stroke="#A879FF" stroke-width="1.5"/>
+  </g>
+
+  <!-- Time grid lines on every major second -->
+  <g stroke="rgba(255,255,255,.05)">
+    <line x1="200" y1="36" x2="200" y2="302"/>
+    <line x1="300" y1="36" x2="300" y2="302"/>
+    <line x1="400" y1="36" x2="400" y2="302"/>
+    <line x1="500" y1="36" x2="500" y2="302"/>
+    <line x1="600" y1="36" x2="600" y2="302"/>
+    <line x1="700" y1="36" x2="700" y2="302"/>
+    <line x1="800" y1="36" x2="800" y2="302"/>
+  </g>
+
+  <!-- Playhead -->
+  <g filter="url(#glowPlay)">
+    <line x1="380" y1="36" x2="380" y2="302" stroke="#F26A6A" stroke-width="2"/>
+    <polygon points="372,36 388,36 380,50" fill="#F26A6A"/>
+  </g>
+</svg>
