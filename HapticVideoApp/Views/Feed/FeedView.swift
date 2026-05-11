@@ -21,6 +21,8 @@ struct FeedView: View {
                 
                 if viewModel.isLoading {
                     loadingView
+                } else if let error = viewModel.errorMessage {
+                    errorStateView(message: error)
                 } else if viewModel.videos.isEmpty {
                     emptyStateView
                 } else {
@@ -128,8 +130,50 @@ struct FeedView: View {
         .shimmer()
     }
     
+    // MARK: - Error State
+
+    private func errorStateView(message: String) -> some View {
+        VStack(spacing: 24) {
+            ZStack {
+                Circle()
+                    .fill(AppColors.backgroundSecondary)
+                    .frame(width: 100, height: 100)
+
+                Image(systemName: "wifi.exclamationmark")
+                    .font(.system(size: 40))
+                    .foregroundColor(AppColors.textTertiary)
+            }
+
+            VStack(spacing: 8) {
+                Text("Couldn't Load Videos")
+                    .font(AppTypography.title3)
+                    .foregroundColor(AppColors.textPrimary)
+
+                Text(message)
+                    .font(AppTypography.subheadline)
+                    .foregroundColor(AppColors.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+            }
+
+            Button {
+                UIHaptics.buttonTap()
+                viewModel.fetchVideos()
+            } label: {
+                Text("Try Again")
+                    .font(AppTypography.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 32)
+                    .padding(.vertical, 12)
+                    .background(AppColors.primaryGradient)
+                    .cornerRadius(24)
+            }
+        }
+    }
+
     // MARK: - Empty State
-    
+
     private var emptyStateView: some View {
         VStack(spacing: 24) {
             ZStack {
@@ -156,9 +200,7 @@ struct FeedView: View {
     }
     
     private func refreshFeed() async {
-        // Simulate network delay
-        try? await Task.sleep(nanoseconds: 500_000_000)
-        viewModel.fetchVideos()
+        await viewModel.fetchVideosAsync()
     }
 }
 
@@ -196,7 +238,7 @@ struct ModernVideoCard: View {
     private var thumbnailSection: some View {
         ZStack(alignment: .bottomLeading) {
             // Thumbnail Image
-            AsyncImage(url: URL(fileURLWithPath: video.thumbnailURL)) { phase in
+            AsyncImage(url: URL(string: video.thumbnailURL)) { phase in
                 switch phase {
                 case .success(let image):
                     image

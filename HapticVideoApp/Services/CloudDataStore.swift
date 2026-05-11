@@ -25,6 +25,7 @@ class CloudDataStore {
     func fetchAllVideos(completion: @escaping ([Video]?, Error?) -> Void) {
         db.collection("videos")
             .order(by: "uploadedAt", descending: true)
+            .limit(to: 50)
             .getDocuments { snapshot, error in
                 if let error = error {
                     completion(nil, error)
@@ -111,6 +112,12 @@ class CloudDataStore {
         }
     }
     
+    // MARK: - Utilities
+
+    func getDocumentsDirectory() -> URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    }
+
     // MARK: - User Management
     
     func saveUserMetadata(_ user: User) {

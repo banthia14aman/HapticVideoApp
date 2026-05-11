@@ -29,13 +29,15 @@ class VideoPlayerService: ObservableObject {
     
     func loadVideo(url: URL) {
         cleanup()
-        
-        guard FileManager.default.fileExists(atPath: url.path) else {
-            loadError = "Video file not found: \(url.lastPathComponent)"
-            print("❌ Video file doesn't exist: \(url.path)")
-            return
+
+        if url.isFileURL {
+            guard FileManager.default.fileExists(atPath: url.path) else {
+                loadError = "Video file not found: \(url.lastPathComponent)"
+                print("❌ Video file doesn't exist: \(url.path)")
+                return
+            }
         }
-        
+
         let playerItem = AVPlayerItem(url: url)
         player = AVPlayer(playerItem: playerItem)
         

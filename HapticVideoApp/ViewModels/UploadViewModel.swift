@@ -137,6 +137,7 @@ class UploadViewModel: ObservableObject {
             let videoData = try Data(contentsOf: videoURL)
             let thumbnailURL = try await generateThumbnail(from: videoURL)
             let thumbnailData = try Data(contentsOf: thumbnailURL)
+            try? FileManager.default.removeItem(at: thumbnailURL)
             
             // Encode haptics
             let encoder = JSONEncoder()

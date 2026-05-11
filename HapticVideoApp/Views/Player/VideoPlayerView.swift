@@ -65,7 +65,7 @@ struct VideoPlayerView: View {
             if let pattern = playerManager.hapticPattern {
                 HapticEditorView(
                     pattern: .constant(pattern),
-                    videoURL: URL(fileURLWithPath: video.videoURL),
+                    videoURL: URL(string: video.videoURL) ?? URL(fileURLWithPath: video.videoURL),
                     videoDuration: video.duration,
                     onSave: { editedPattern in
                         playerManager.updateHaptics(pattern: editedPattern)
@@ -286,7 +286,10 @@ class VideoPlayerManager: ObservableObject {
     }
     
     private func setupPlayer(video: Video) async {
-        let videoURL = URL(fileURLWithPath: video.videoURL)
+        guard let videoURL = URL(string: video.videoURL) else {
+            print("❌ Invalid video URL: \(video.videoURL)")
+            return
+        }
         let playerItem = AVPlayerItem(url: videoURL)
         player = AVPlayer(playerItem: playerItem)
         videoDuration = video.duration
@@ -295,7 +298,7 @@ class VideoPlayerManager: ObservableObject {
         print("📹 Setting up player (duration: \(videoDuration)s)")
         
         if let hapticsPath = video.hapticsURL {
-            loadHaptics(from: hapticsPath, duration: video.duration)
+            await loadHaptics(from: hapticsPath, duration: video.duration)
         }
         
         let interval = CMTime(seconds: 0.02, preferredTimescale: 600)
@@ -342,21 +345,24 @@ class VideoPlayerManager: ObservableObject {
         print("▶️ Playing")
     }
     
-    func loadHaptics(from path: String, duration: Double) {
+    func loadHaptics(from path: String, duration: Double) async {
+        guard let url = URL(string: path) else {
+            print("❌ Invalid haptics URL: \(path)")
+            return
+        }
         do {
-            let url = URL(fileURLWithPath: path)
-            let data = try Data(contentsOf: url)
+            let (data, _) = try await URLSession.shared.data(from: url)
             let decoder = JSONDecoder()
             decoder.dateDecodingStrategy = .iso8601
             var pattern = try decoder.decode(HapticPattern.self, from: data)
-            
+
             pattern.events = pattern.events.filter { event in
                 event.time + event.duration <= duration - stopHapticsBeforeEnd
             }
-            
+
             hapticPattern = pattern
             print("✅ Loaded \(pattern.events.count) haptic events")
-            
+
         } catch {
             print("❌ Failed to load haptics: \(error)")
         }
