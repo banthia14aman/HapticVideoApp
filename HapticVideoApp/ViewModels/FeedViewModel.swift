@@ -10,10 +10,9 @@ class FeedViewModel: ObservableObject {
     @Published var videos: [Video] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
-    
-    // Uses Firebase backend
-    private let dataStore = CloudDataStore.shared
-    
+
+    private let dataStore = AppBackend.store
+
     func fetchVideos() {
         Task { await fetchVideosAsync() }
     }
@@ -22,40 +21,48 @@ class FeedViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
 
-        await withCheckedContinuation { continuation in
-            dataStore.fetchAllVideos { [weak self] fetchedVideos, error in
-                DispatchQueue.main.async {
-                    self?.isLoading = false
-                    if let error = error {
-                        self?.errorMessage = error.localizedDescription
-                    } else if let fetchedVideos = fetchedVideos {
-                        self?.videos = fetchedVideos
-                        print("📹 Loaded \(fetchedVideos.count) videos from cloud")
-                    }
-                    continuation.resume()
-                }
-            }
+        do {
+            let fetched = try await dataStore.fetchAllVideos()
+            videos = fetched
+            print("📹 Loaded \(fetched.count) videos from cloud")
+        } catch {
+            errorMessage = error.localizedDescription
         }
+
+        isLoading = false
     }
-    
+
     func fetchSpecificVideo(byId id: String, completion: @escaping (Video?) -> Void) {
-        dataStore.fetchVideo(byId: id) { video, error in
-            DispatchQueue.main.async {
-                if let error = error {
-                    print("❌ Error fetching shared video: \(error.localizedDescription)")
-                    completion(nil)
-                } else {
-                    completion(video)
-                }
+        Task {
+            do {
+                let video = try await dataStore.fetchVideo(byId: id)
+                completion(video)
+            } catch {
+                print("❌ Error fetching shared video: \(error.localizedDescription)")
+                completion(nil)
             }
         }
     }
-    
+
     func incrementViews(for videoId: String) {
-        // Implement Firestore view increment here (e.g., FieldValue.increment(Int64(1)))
+        // Optimistic local bump so the UI updates immediately.
+        if let idx = videos.firstIndex(where: { $0.id == videoId }) {
+            videos[idx].views += 1
+        }
+        Task {
+            do { try await dataStore.incrementViews(videoId: videoId) }
+            catch { print("⚠️ View increment failed: \(error.localizedDescription)") }
+        }
     }
-    
-    func deleteVideo(_ videoId: String) {
-        // Implement Firestore/Storage deletion here
+
+    func deleteVideo(_ video: Video) {
+        Task {
+            do {
+                try await dataStore.deleteVideo(video)
+                videos.removeAll { $0.id == video.id }
+            } catch {
+                errorMessage = "Delete failed: \(error.localizedDescription)"
+            }
+        }
     }
 }

@@ -16,10 +16,15 @@ struct UploadView: View {
     @State private var selectedItem: PhotosPickerItem?
     @State private var videoTitle = ""
     @State private var videoDescription = ""
-    @State private var showingRecorder = false
     @State private var selectedVideoURL: URL?
     @State private var selectedThumbnail: UIImage?
     @State private var showVideoPicker = false
+    @State private var suggestedTitle: String?
+    @State private var showLongVideoAlert = false
+    @State private var showSavedToast = false
+
+    private static let titleLimit = 60
+    private static let longVideoThreshold: Double = 180
     
     var body: some View {
         NavigationStack {
@@ -84,6 +89,13 @@ struct UploadView: View {
                             Task {
                                 await finalizeUpload(with: editedPattern)
                             }
+                        },
+                        onCancel: {
+                            // Backing out of the editor without saving used to
+                            // leave isUploading stuck true → upload UI soft-locked.
+                            uploadViewModel.isUploading = false
+                            uploadViewModel.uploadProgress = 0
+                            uploadViewModel.isGeneratingHaptics = false
                         }
                     )
                 }
@@ -94,6 +106,26 @@ struct UploadView: View {
                 }
             } message: {
                 Text(uploadViewModel.errorMessage ?? "")
+            }
+            .alert("Long Video", isPresented: $showLongVideoAlert) {
+                Button("Continue") { }
+                Button("Cancel", role: .cancel) { resetUpload() }
+            } message: {
+                Text("This video is over 3 minutes, so haptic generation will take a while longer. Continue anyway?")
+            }
+            .overlay(alignment: .bottom) {
+                if showSavedToast {
+                    Text("Saved to your feed ✓")
+                        .font(AppTypography.subheadline)
+                        .foregroundColor(AppColors.textPrimary)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+                        .background(AppColors.backgroundSecondary)
+                        .clipShape(Capsule())
+                        .shadow(radius: 8)
+                        .padding(.bottom, 100)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
         }
         .preferredColorScheme(.dark)
@@ -160,33 +192,6 @@ struct UploadView: View {
             }
             .buttonStyle(PlainButtonStyle())
             
-            HStack {
-                Rectangle()
-                    .fill(AppColors.backgroundTertiary)
-                    .frame(height: 1)
-                
-                Text("OR")
-                    .font(AppTypography.caption)
-                    .foregroundColor(AppColors.textTertiary)
-                    .padding(.horizontal, 16)
-                
-                Rectangle()
-                    .fill(AppColors.backgroundTertiary)
-                    .frame(height: 1)
-            }
-            
-            Button {
-                UIHaptics.buttonTap()
-                showingRecorder = true
-            } label: {
-                HStack(spacing: 12) {
-                    Image(systemName: "video.fill")
-                        .font(.system(size: 18))
-                    Text("Record New Video")
-                        .font(AppTypography.headline)
-                }
-            }
-            .buttonStyle(SecondaryButtonStyle())
         }
     }
     
@@ -201,6 +206,8 @@ struct UploadView: View {
                     .frame(height: 200)
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                 
+                // Duration bottom-left, close top-right — they overlapped
+                // when both sat in the top-right corner.
                 Text(formatDuration(uploadViewModel.videoDuration))
                     .font(.system(size: 11, weight: .semibold, design: .monospaced))
                     .foregroundColor(.white)
@@ -209,7 +216,8 @@ struct UploadView: View {
                     .background(.ultraThinMaterial)
                     .cornerRadius(8)
                     .padding(12)
-                
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+
                 Button {
                     UIHaptics.buttonTap()
                     resetUpload()
@@ -222,8 +230,8 @@ struct UploadView: View {
                         .clipShape(Circle())
                 }
                 .padding(12)
-                .offset(y: -8)
             }
+            .frame(height: 200)
             
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
@@ -253,13 +261,21 @@ struct UploadView: View {
     private var detailsForm: some View {
         VStack(spacing: 20) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("TITLE")
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundColor(AppColors.textTertiary)
-                
+                HStack {
+                    Text("TITLE")
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundColor(AppColors.textTertiary)
+
+                    Spacer()
+
+                    Text("\(videoTitle.count)/\(Self.titleLimit)")
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundColor(videoTitle.count > Self.titleLimit ? AppColors.error : AppColors.textTertiary)
+                }
+
                 ModernTextField(
                     icon: "textformat",
-                    placeholder: "Enter video title",
+                    placeholder: suggestedTitle ?? "Enter video title",
                     text: $videoTitle
                 )
             }
@@ -279,20 +295,35 @@ struct UploadView: View {
                     .cornerRadius(16)
             }
             
-            Button {
-                Task {
-                    await startUpload()
+            VStack(spacing: 8) {
+                Button {
+                    Task {
+                        await startUpload()
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "waveform.badge.plus")
+                        Text("Generate Haptics & Upload")
+                    }
                 }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "waveform.badge.plus")
-                    Text("Generate Haptics & Upload")
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(uploadDisabledReason != nil || uploadViewModel.isUploading)
+                .opacity(uploadDisabledReason != nil ? 0.6 : 1)
+
+                if let reason = uploadDisabledReason {
+                    Text(reason)
+                        .font(AppTypography.caption)
+                        .foregroundColor(AppColors.textTertiary)
                 }
             }
-            .buttonStyle(PrimaryButtonStyle())
-            .disabled(videoTitle.isEmpty || uploadViewModel.isUploading)
-            .opacity(videoTitle.isEmpty ? 0.6 : 1)
         }
+    }
+
+    private var uploadDisabledReason: String? {
+        if selectedVideoURL == nil { return "Pick a video first" }
+        if videoTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Add a title" }
+        if videoTitle.count > Self.titleLimit { return "Keep the title under \(Self.titleLimit) characters" }
+        return nil
     }
     
     // MARK: - Upload Progress View
@@ -327,24 +358,72 @@ struct UploadView: View {
                 }
             }
             
-            VStack(spacing: 8) {
-                Text(statusText)
-                    .font(AppTypography.headline)
-                    .foregroundColor(AppColors.textPrimary)
-                
-                Text(statusSubtext)
-                    .font(AppTypography.subheadline)
-                    .foregroundColor(AppColors.textSecondary)
+            VStack(alignment: .leading, spacing: 12) {
+                ForEach(Self.stages.indices, id: \.self) { i in
+                    HStack(spacing: 12) {
+                        Image(systemName: i < currentStageIndex ? "checkmark.circle.fill" : Self.stages[i].icon)
+                            .font(.system(size: 16))
+                            .foregroundColor(i < currentStageIndex ? AppColors.success :
+                                             i == currentStageIndex ? AppColors.primary : AppColors.textTertiary)
+                            .frame(width: 22)
+
+                        Text(Self.stages[i].label)
+                            .font(AppTypography.subheadline)
+                            .foregroundColor(i == currentStageIndex ? AppColors.textPrimary : AppColors.textTertiary)
+
+                        Spacer()
+
+                        if i == currentStageIndex {
+                            ProgressView()
+                                .tint(AppColors.primary)
+                                .scaleEffect(0.7)
+                        }
+                    }
+                }
+
+                if currentStageIndex == Self.stages.count {
+                    HStack(spacing: 12) {
+                        Image(systemName: "icloud.and.arrow.up")
+                            .font(.system(size: 16))
+                            .foregroundColor(AppColors.primary)
+                            .frame(width: 22)
+
+                        Text("Saving to your feed")
+                            .font(AppTypography.subheadline)
+                            .foregroundColor(AppColors.textPrimary)
+
+                        Spacer()
+
+                        ProgressView()
+                            .tint(AppColors.primary)
+                            .scaleEffect(0.7)
+                    }
+                }
             }
+            .frame(maxWidth: .infinity)
         }
         .padding(32)
         .frame(maxWidth: .infinity)
         .background(AppColors.backgroundSecondary)
         .cornerRadius(24)
     }
-    
+
     // MARK: - Helpers
-    
+
+    private static let stages: [(icon: String, label: String, start: Double)] = [
+        ("waveform", "Analyzing audio", 0.3),
+        ("ear", "Detecting sounds", 0.6),
+        ("video", "Analyzing motion", 0.85),
+        ("hand.tap", "Building haptics", 0.92)
+    ]
+
+    /// Index of the active stage; Self.stages.count when generation is done (uploading).
+    private var currentStageIndex: Int {
+        guard uploadViewModel.isGeneratingHaptics else { return Self.stages.count }
+        let p = uploadViewModel.hapticGenerationProgress
+        return Self.stages.lastIndex(where: { p >= $0.start }) ?? 0
+    }
+
     private var totalProgress: Double {
         if uploadViewModel.isGeneratingHaptics {
             return uploadViewModel.hapticGenerationProgress * 0.8
@@ -354,48 +433,45 @@ struct UploadView: View {
         return 0
     }
     
-    private var statusText: String {
-        if uploadViewModel.isGeneratingHaptics {
-            return "Generating Haptics"
-        } else if uploadViewModel.isUploading {
-            return "Uploading"
-        }
-        return "Processing"
-    }
-    
-    private var statusSubtext: String {
-        if uploadViewModel.isGeneratingHaptics {
-            return "Analyzing audio waveform..."
-        } else if uploadViewModel.isUploading {
-            return "Almost there..."
-        }
-        return "Please wait"
-    }
-    
     private func loadVideo(from item: PhotosPickerItem?) async {
         guard let item = item else { return }
         
         do {
-            if let url = try await item.loadTransferable(type: VideoTransferable.self)?.url {
+            if let video = try await item.loadTransferable(type: VideoTransferable.self) {
+                let url = video.url
+                VideoTransferable.discardDraft(at: selectedVideoURL)  // replaced pick
+                VideoTransferable.sweepStaleDrafts()
                 selectedVideoURL = url
                 uploadViewModel.currentVideoURL = url
-                
-                // Generate thumbnail
-                let asset = AVAsset(url: url)
+                suggestedTitle = video.originalName
+
+                // Generate thumbnail (async API — copyCGImage is deprecated
+                // and blocked the main thread)
+                let asset = AVURLAsset(url: url)
                 let imageGenerator = AVAssetImageGenerator(asset: asset)
                 imageGenerator.appliesPreferredTrackTransform = true
-                
-                let cgImage = try imageGenerator.copyCGImage(at: .zero, actualTime: nil)
+
+                let cgImage = try await imageGenerator.image(at: .zero).image
                 selectedThumbnail = UIImage(cgImage: cgImage)
-                
+
                 // Get duration
                 let duration = try await asset.load(.duration)
                 uploadViewModel.videoDuration = CMTimeGetSeconds(duration)
-                
+
                 UIHaptics.success()
+
+                if uploadViewModel.videoDuration > Self.longVideoThreshold {
+                    showLongVideoAlert = true
+                }
             }
         } catch {
             print("Error loading video: \(error)")
+            // Surface it — a silent console print looked like "nothing happened".
+            uploadViewModel.errorMessage =
+                "Couldn't load that video. If it's stored in iCloud, open it once in Photos to download it, then try again."
+            VideoTransferable.discardDraft(at: selectedVideoURL)
+            selectedVideoURL = nil
+            selectedThumbnail = nil
             UIHaptics.error()
         }
     }
@@ -408,7 +484,7 @@ struct UploadView: View {
         
         await uploadViewModel.uploadVideo(
             videoURL: videoURL,
-            title: videoTitle,
+            title: videoTitle.trimmingCharacters(in: .whitespacesAndNewlines),
             description: videoDescription.isEmpty ? nil : videoDescription,
             uploaderID: user.id,
             uploaderUsername: user.username
@@ -421,15 +497,20 @@ struct UploadView: View {
         if uploadViewModel.errorMessage == nil {
             UIHaptics.success()
             resetUpload()
+            withAnimation { showSavedToast = true }
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            withAnimation { showSavedToast = false }
         } else {
             UIHaptics.error()
         }
     }
     
     private func resetUpload() {
+        VideoTransferable.discardDraft(at: selectedVideoURL)
         selectedItem = nil
         selectedVideoURL = nil
         selectedThumbnail = nil
+        suggestedTitle = nil
         videoTitle = ""
         videoDescription = ""
         uploadViewModel.currentVideoURL = nil
@@ -449,14 +530,52 @@ struct UploadView: View {
 
 struct VideoTransferable: Transferable {
     let url: URL
-    
+    var originalName: String? = nil
+
     static var transferRepresentation: some TransferRepresentation {
         FileRepresentation(contentType: .movie) { movie in
             SentTransferredFile(movie.url)
         } importing: { received in
-            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mov")
-            try FileManager.default.copyItem(at: received.file, to: tempURL)
-            return Self(url: tempURL)
+            // Documents, NOT tmp — iOS purges tmp/ on backgrounding, which
+            // deleted the picked video out from under the editor timeline.
+            // KEEP the original extension: AVURLAsset infers the container
+            // type from it, and renaming an .mp4 to .mov makes asset loading
+            // fail with -11800/-17913 (assetProperty_AssetType).
+            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            let ext = received.file.pathExtension.isEmpty ? "mov" : received.file.pathExtension
+            let draftURL = docs.appendingPathComponent("draft-\(UUID().uuidString).\(ext)")
+            try FileManager.default.copyItem(at: received.file, to: draftURL)
+
+            // A zero-byte copy (iCloud asset that never materialized) should
+            // fail here, not as a cryptic AVFoundation error later.
+            let size = (try? draftURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            guard size > 0 else {
+                try? FileManager.default.removeItem(at: draftURL)
+                throw CocoaError(.fileReadCorruptFile)
+            }
+
+            let name = received.file.deletingPathExtension().lastPathComponent
+            return Self(url: draftURL, originalName: name.isEmpty ? nil : name)
+        }
+    }
+
+    /// Removes a draft file created by the importer (no-op for other URLs).
+    static func discardDraft(at url: URL?) {
+        guard let url, url.lastPathComponent.hasPrefix("draft-") else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    /// Sweeps drafts orphaned by force-quits (older than 48h).
+    static func sweepStaleDrafts() {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let cutoff = Date().addingTimeInterval(-48 * 3600)
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: docs, includingPropertiesForKeys: [.creationDateKey]) else { return }
+        for file in files where file.lastPathComponent.hasPrefix("draft-") {
+            let created = (try? file.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? .distantPast
+            if created < cutoff {
+                try? FileManager.default.removeItem(at: file)
+            }
         }
     }
 }

@@ -22,6 +22,8 @@ class HapticEditorViewModel: ObservableObject {
     @Published var showHapticEditor: Bool = false
     @Published var generatedPattern: HapticPattern?
     @Published var currentVideoURL: URL?
+    @Published private(set) var canUndo: Bool = false
+    @Published private(set) var canRedo: Bool = false
 
     // Video player
     @Published var player: AVPlayer?
@@ -40,8 +42,14 @@ class HapticEditorViewModel: ObservableObject {
     private let hapticService = HapticService.shared
     private var hapticPatternLoaded: Bool = false
     private var lastObservedTime: Double = 0
-    private var lastReloadStamp: Date = .distantPast
+    private var reloadTask: Task<Void, Never>?
     private let reloadDebounce: TimeInterval = 0.12
+
+    // Undo/redo snapshots of `events`
+    private var undoStack: [[HapticEvent]] = []
+    private var redoStack: [[HapticEvent]] = []
+    private var lastSnapshotAt: Date = .distantPast
+    private var lastSnapshotSource: String?
 
     init(pattern: HapticPattern, videoURL: URL, videoDuration: Double) {
         self.events = pattern.events
@@ -65,17 +73,30 @@ class HapticEditorViewModel: ObservableObject {
         // 30Hz UI updates — smooth playhead without thrashing SwiftUI
         let interval = CMTime(seconds: 1.0 / 30.0, preferredTimescale: 600)
         timeObserver = newPlayer.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
-            guard let self = self else { return }
-            let t = time.seconds
-            guard t.isFinite else { return }
+            // Delivered on the main queue; assumeIsolated keeps it synchronous
+            // (a Task hop would add a runloop tick of playhead lag).
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let t = time.seconds
+                guard t.isFinite else { return }
 
-            self.currentTime = t
+                self.currentTime = t
 
-            // Pull haptics down before the very end of the file
-            if t >= self.videoDuration - self.stopBeforeEnd, self.hapticService.isPlaying {
-                self.hapticService.pauseAdvancedPlayer()
+                // External seek (fullscreen native controls, system scrubber):
+                // a jump the 30Hz cadence can't produce → resync haptics.
+                if abs(t - self.lastObservedTime) > 0.4, self.hapticPatternLoaded {
+                    self.hapticService.seekAdvancedPlayer(to: t)
+                    if self.isPlaying, t < self.videoDuration - self.stopBeforeEnd {
+                        self.hapticService.startAdvancedPlayer()
+                    }
+                }
+
+                // Pull haptics down before the very end of the file
+                if t >= self.videoDuration - self.stopBeforeEnd, self.hapticService.isPlaying {
+                    self.hapticService.pauseAdvancedPlayer()
+                }
+                self.lastObservedTime = t
             }
-            self.lastObservedTime = t
         }
 
         // Rate observer: keep haptics in lockstep with the AVPlayer
@@ -149,24 +170,31 @@ class HapticEditorViewModel: ObservableObject {
     private func startHapticPlayback() {
         if !hapticPatternLoaded { loadHapticPattern() }
         guard hapticPatternLoaded else { return }
-        hapticService.seekAdvancedPlayer(to: currentTime)
+        // Live player clock, not the 30Hz-observer copy — the cached value
+        // is up to 33ms stale, which shifted haptics on every resume.
+        let liveTime = player?.currentTime().seconds ?? currentTime
+        hapticService.seekAdvancedPlayer(to: liveTime.isFinite ? liveTime : currentTime)
         hapticService.startAdvancedPlayer()
     }
 
-    /// Rebuilds the loaded CHHapticPattern after edits. Debounced so rapid
-    /// slider drags don't thrash the engine.
+    /// Rebuilds the loaded CHHapticPattern after edits. Trailing-edge debounce:
+    /// rapid slider drags coalesce, and the FINAL value always reloads
+    /// (the old leading-edge guard dropped the last drag value).
     func reloadHapticPattern(resumeIfPlaying: Bool = true) {
-        let now = Date()
-        guard now.timeIntervalSince(lastReloadStamp) >= reloadDebounce else { return }
-        lastReloadStamp = now
+        reloadTask?.cancel()
+        reloadTask = Task { [weak self] in
+            guard let self else { return }
+            try? await Task.sleep(nanoseconds: UInt64(reloadDebounce * 1_000_000_000))
+            guard !Task.isCancelled else { return }
 
-        let wasPlaying = isPlaying
-        hapticService.stopAdvancedPlayer()
-        hapticPatternLoaded = false
-        loadHapticPattern()
-        if wasPlaying && resumeIfPlaying {
-            hapticService.seekAdvancedPlayer(to: currentTime)
-            hapticService.startAdvancedPlayer()
+            let wasPlaying = isPlaying
+            hapticService.stopAdvancedPlayer()
+            hapticPatternLoaded = false
+            loadHapticPattern()
+            if wasPlaying && resumeIfPlaying {
+                hapticService.seekAdvancedPlayer(to: currentTime)
+                hapticService.startAdvancedPlayer()
+            }
         }
     }
 
@@ -213,19 +241,69 @@ class HapticEditorViewModel: ObservableObject {
         currentTime = max(0, videoDuration - stopBeforeEnd)
     }
 
+    // MARK: - Undo / Redo
+
+    /// Push a snapshot of `events` before a mutation. Coalesced: continuous
+    /// slider drags call updateEvent every tick, so only push when >0.5s has
+    /// passed since the last push or the mutating function changed.
+    private func snapshotForUndo(_ source: String) {
+        redoStack.removeAll()
+        canRedo = false
+        if source == lastSnapshotSource, Date().timeIntervalSince(lastSnapshotAt) < 0.5 {
+            return
+        }
+        undoStack.append(events)
+        if undoStack.count > 50 { undoStack.removeFirst() }
+        lastSnapshotAt = Date()
+        lastSnapshotSource = source
+        canUndo = true
+    }
+
+    func undo() {
+        guard let previous = undoStack.popLast() else { return }
+        redoStack.append(events)
+        events = previous
+        lastSnapshotSource = nil  // next mutation always snapshots
+        canUndo = !undoStack.isEmpty
+        canRedo = true
+        UIHaptics.buttonTapMedium()
+        reloadHapticPattern()
+    }
+
+    func redo() {
+        guard let next = redoStack.popLast() else { return }
+        undoStack.append(events)
+        events = next
+        lastSnapshotSource = nil
+        canUndo = true
+        canRedo = !redoStack.isEmpty
+        UIHaptics.buttonTapMedium()
+        reloadHapticPattern()
+    }
+
     // MARK: - Event Editing
 
     /// Insert and sort, then reload pattern.
     func addEvent(_ event: HapticEvent) {
         // Don't allow events past the safe boundary
         guard event.time < videoDuration - stopBeforeEnd else { return }
+        snapshotForUndo("add")
         events.append(event)
         events.sort { $0.time < $1.time }
         reloadHapticPattern()
     }
 
+    /// Replaces a continuous event's envelope (from timeline curve-handle drags).
+    func updateCurve(id: UUID, curve: [HapticCurvePoint]) {
+        guard let idx = events.firstIndex(where: { $0.id == id }) else { return }
+        snapshotForUndo("updateCurve")
+        events[idx].intensityCurve = curve
+        reloadHapticPattern()
+    }
+
     func updateEvent(id: UUID, intensity: Float? = nil, sharpness: Float? = nil, duration: Double? = nil, time: Double? = nil) {
         guard let idx = events.firstIndex(where: { $0.id == id }) else { return }
+        snapshotForUndo("update")
         var ev = events[idx]
         if let intensity { ev.intensity = max(0, min(1, intensity)) }
         if let sharpness { ev.sharpness = max(0, min(1, sharpness)) }
@@ -239,11 +317,15 @@ class HapticEditorViewModel: ObservableObject {
     }
 
     func deleteEvent(id: UUID) {
+        guard events.contains(where: { $0.id == id }) else { return }
+        snapshotForUndo("delete")
         events.removeAll { $0.id == id }
         reloadHapticPattern()
     }
 
     func clearAllEvents() {
+        guard !events.isEmpty else { return }
+        snapshotForUndo("clear")
         events.removeAll()
         reloadHapticPattern()
     }
@@ -259,6 +341,8 @@ class HapticEditorViewModel: ObservableObject {
     // MARK: - Cleanup
 
     func cleanup() {
+        reloadTask?.cancel()
+        reloadTask = nil
         hapticService.forceStopAllHaptics()
         if let observer = timeObserver {
             player?.removeTimeObserver(observer)

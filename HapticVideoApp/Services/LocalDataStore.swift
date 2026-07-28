@@ -2,216 +2,269 @@
 //  LocalDataStore.swift
 //  HapticVideoApp
 //
+//  On-device store: media files in Documents, metadata index in videos.json.
+//  The index stores bare FILENAMES, not absolute URLs — the app container
+//  path changes across reinstalls/rebuilds, so absolute paths go stale.
+//  Filenames are resolved against the current Documents directory on read.
+//
 
 import Foundation
+import UIKit
 
-class LocalDataStore {
+/// NSCache-backed thumbnail loader so views don't hit disk every render.
+/// INTEGRATION: views should replace `UIImage(contentsOfFile:)` /
+/// AsyncImage-on-file-URL with `ThumbnailCache.image(forPath:)`.
+enum ThumbnailCache {
+    private static let cache = NSCache<NSString, UIImage>()
+
+    static func image(forPath path: String) -> UIImage? {
+        if let hit = cache.object(forKey: path as NSString) { return hit }
+        guard let img = UIImage(contentsOfFile: path) else { return nil }
+        cache.setObject(img, forKey: path as NSString)
+        return img
+    }
+}
+
+final class LocalDataStore: VideoDataStore {
     static let shared = LocalDataStore()
-    
-    private let videosKey = "allVideos"
-    private let currentUserKey = "currentUser"
-    
     private init() {}
-    
-    // MARK: - Documents Directory
-    
-    func getDocumentsDirectory() -> URL {
+
+    private let userKey = "currentUser"
+    /// One orphan sweep per launch, from the first fetchAllVideos.
+    private var sweptThisLaunch = false
+
+    private var docs: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     }
-    
-    // MARK: - User Management
-    
-    func saveUser(_ user: User) {
-        do {
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            let data = try encoder.encode(user)
-            UserDefaults.standard.set(data, forKey: currentUserKey)
-            print("✅ User saved: \(user.username)")
-        } catch {
-            print("❌ Failed to save user: \(error)")
+    private var indexURL: URL { docs.appendingPathComponent("videos.json") }
+    private var indexBackupURL: URL { docs.appendingPathComponent("videos.json.bak") }
+
+    // MARK: - Index
+
+    /// Reads videos.json; on a corrupt/undecodable index falls back to the
+    /// last-good backup, then to empty. One bad write never loses the library.
+    private func readIndex() throws -> [Video] {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        for url in [indexURL, indexBackupURL] {
+            guard let data = try? Data(contentsOf: url) else { continue }
+            if let videos = try? decoder.decode([Video].self, from: data) { return videos }
+        }
+        return []
+    }
+
+    private func writeIndex(_ videos: [Video]) throws {
+        let fm = FileManager.default
+        // Keep the previous good index as a backup before overwriting.
+        if fm.fileExists(atPath: indexURL.path) {
+            try? fm.removeItem(at: indexBackupURL)
+            try? fm.copyItem(at: indexURL, to: indexBackupURL)
+        }
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        // .atomic = write-to-temp + rename; a crash mid-write can't corrupt.
+        try encoder.encode(videos).write(to: indexURL, options: .atomic)
+    }
+
+    /// All index-referenced local filenames (skips cloud URLs).
+    private func referencedNames(in index: [Video]) -> Set<String> {
+        Set(index.flatMap { [$0.videoURL, $0.thumbnailURL, $0.hapticsURL].compactMap { $0 } }
+            .filter { !$0.contains("://") })
+    }
+
+    // MARK: - Storage Maintenance
+
+    /// INTEGRATION: Profile can show this via AppBackend.store.storageUsage().
+    func storageUsage() -> (videoCount: Int, bytes: Int64) {
+        let index = (try? readIndex()) ?? []
+        let bytes = referencedNames(in: index).reduce(Int64(0)) { total, name in
+            let attrs = try? FileManager.default.attributesOfItem(
+                atPath: docs.appendingPathComponent(name).path)
+            return total + ((attrs?[.size] as? Int64) ?? 0)
+        }
+        return (index.count, bytes)
+    }
+
+    /// Deletes media files we own (*.mp4 / *.jpg / *.haptics.json, excluding
+    /// draft-*) that no index row references.
+    func sweepOrphans() {
+        let fm = FileManager.default
+        guard let files = try? fm.contentsOfDirectory(atPath: docs.path) else { return }
+        let referenced = referencedNames(in: (try? readIndex()) ?? [])
+        for name in files where !name.hasPrefix("draft-") && !referenced.contains(name)
+            && (name.hasSuffix(".mp4") || name.hasSuffix(".jpg") || name.hasSuffix(".haptics.json")) {
+            try? fm.removeItem(at: docs.appendingPathComponent(name))
         }
     }
-    
-    func getCurrentUser() -> User? {
-        guard let data = UserDefaults.standard.data(forKey: currentUserKey) else {
-            return nil
-        }
-        
-        do {
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            let user = try decoder.decode(User.self, from: data)
-            return user
-        } catch {
-            print("❌ Failed to load user: \(error)")
-            return nil
-        }
+
+    /// Prototype storage shouldn't bloat iCloud backups.
+    private func excludeFromBackup(_ url: URL) {
+        var url = url
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? url.setResourceValues(values)
     }
-    
-    func clearCurrentUser() {
-        UserDefaults.standard.removeObject(forKey: currentUserKey)
-        print("🗑️ User cleared")
-    }
-    
-    func updateUserVideoCount(_ userId: String, increment: Int = 1) {
-        guard var user = getCurrentUser(), user.id == userId else { return }
-        user.videosUploaded += increment
-        saveUser(user)
-    }
-    
-    // MARK: - Video Management
-    
-    func saveVideo(_ video: Video) {
-        var videos = getAllVideos()
-        
-        // Remove existing video with same ID (if updating)
-        videos.removeAll { $0.id == video.id }
-        
-        // Add new video
-        videos.append(video)
-        
-        // Save to UserDefaults
-        do {
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            let data = try encoder.encode(videos)
-            UserDefaults.standard.set(data, forKey: videosKey)
-            
-            // Update user's video count
-            updateUserVideoCount(video.uploaderID)
-            
-            print("✅ Video saved: \(video.title) (Total: \(videos.count))")
-        } catch {
-            print("❌ Failed to save video: \(error)")
+
+    /// Index rows hold filenames; views need absolute file URLs.
+    private func resolved(_ video: Video) -> Video {
+        func abs(_ name: String) -> String {
+            name.contains("://") ? name : docs.appendingPathComponent(name).absoluteString
         }
+        var v = video
+        v.videoURL = abs(v.videoURL)
+        v.thumbnailURL = abs(v.thumbnailURL)
+        if let h = v.hapticsURL { v.hapticsURL = abs(h) }
+        return v
     }
-    
-    func getAllVideos() -> [Video] {
-        guard let data = UserDefaults.standard.data(forKey: videosKey) else {
-            return getMockVideos()
+
+    // MARK: - Demo Content
+
+    /// Copies bundled demo clips (authored haptic tracks included) into
+    /// Documents and indexes them on first launch — built-in A/B material.
+    private func seedDemoContentIfNeeded() {
+        let seededKey = "demoContentSeeded.v1"
+        guard !UserDefaults.standard.bool(forKey: seededKey) else { return }
+
+        func bundled(_ name: String, _ ext: String) -> URL? {
+            Bundle.main.url(forResource: name, withExtension: ext)
+                ?? Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "Demos")
+                ?? Bundle.main.url(forResource: name, withExtension: ext, subdirectory: "Resources/Demos")
         }
-        
-        do {
-            let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
-            let videos = try decoder.decode([Video].self, from: data)
-            return videos.sorted { $0.uploadedAt > $1.uploadedAt }
-        } catch {
-            print("❌ Failed to load videos: \(error)")
-            return getMockVideos()
-        }
-    }
-    
-    func getVideo(byId id: String) -> Video? {
-        return getAllVideos().first { $0.id == id }
-    }
-    
-    func deleteVideo(_ videoId: String) {
-        var videos = getAllVideos()
-        
-        // Get video to delete (for file cleanup)
-        if let video = videos.first(where: { $0.id == videoId }) {
-            deleteFile(at: video.videoURL)
-            deleteFile(at: video.thumbnailURL)
-            if let hapticsURL = video.hapticsURL {
-                deleteFile(at: hapticsURL)
-            }
-        }
-        
-        videos.removeAll { $0.id == videoId }
-        
-        do {
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            let data = try encoder.encode(videos)
-            UserDefaults.standard.set(data, forKey: videosKey)
-            print("🗑️ Video deleted: \(videoId)")
-        } catch {
-            print("❌ Failed to delete video: \(error)")
-        }
-    }
-    
-    func incrementViews(for videoId: String) {
-        var videos = getAllVideos()
-        
-        if let index = videos.firstIndex(where: { $0.id == videoId }) {
-            videos[index].views += 1
-            
-            do {
-                let encoder = JSONEncoder()
-                encoder.dateEncodingStrategy = .iso8601
-                let data = try encoder.encode(videos)
-                UserDefaults.standard.set(data, forKey: videosKey)
-                print("👁️ Views incremented for: \(videos[index].title)")
-            } catch {
-                print("❌ Failed to update views: \(error)")
-            }
-        }
-    }
-    
-    // MARK: - File Management
-    
-    private func deleteFile(at path: String) {
-        let url = URL(fileURLWithPath: path)
-        do {
-            if FileManager.default.fileExists(atPath: path) {
-                try FileManager.default.removeItem(at: url)
-                print("🗑️ Deleted file: \(url.lastPathComponent)")
-            }
-        } catch {
-            print("❌ Failed to delete file: \(error)")
-        }
-    }
-    
-    // MARK: - Mock Data
-    
-    private func getMockVideos() -> [Video] {
-        return [
-            Video(
-                id: "mock1",
-                title: "Sample Haptic Video 1",
-                videoURL: "/mock/video1.mp4",
-                thumbnailURL: "/mock/thumb1.jpg",
-                uploaderID: "system",
-                uploaderUsername: "System",
-                uploadedAt: Date().addingTimeInterval(-86400),
-                duration: 45.0,
-                hasHaptics: true,
-                hapticsURL: nil,
-                views: 124,
-                description: "Sample video with AI-generated haptics"
-            ),
-            Video(
-                id: "mock2",
-                title: "Sample Haptic Video 2",
-                videoURL: "/mock/video2.mp4",
-                thumbnailURL: "/mock/thumb2.jpg",
-                uploaderID: "system",
-                uploaderUsername: "System",
-                uploadedAt: Date().addingTimeInterval(-172800),
-                duration: 30.0,
-                hasHaptics: true,
-                hapticsURL: nil,
-                views: 89,
-                description: "Another haptic example"
-            )
+
+        let demos: [(base: String, title: String, desc: String, duration: Double)] = [
+            ("demo-bass-drop",   "Bass Drop",      "Feel the silence before the drop", 12.0),
+            ("demo-clicks",      "Clicks & Ticks", "Crisp transients, zero rumble",    10.0),
+            ("demo-transitions", "Transitions",    "Risers and impacts you can feel",  13.5),
         ]
-    }
-    
-    func clearAllData() {
-        UserDefaults.standard.removeObject(forKey: videosKey)
-        UserDefaults.standard.removeObject(forKey: currentUserKey)
-        
-        let documentsDir = getDocumentsDirectory()
-        do {
-            let files = try FileManager.default.contentsOfDirectory(at: documentsDir, includingPropertiesForKeys: nil)
-            for file in files {
-                try FileManager.default.removeItem(at: file)
+
+        var index = (try? readIndex()) ?? []
+        var seededAny = false
+        for (demoIndex, demo) in demos.enumerated() {
+            guard let videoSrc = bundled(demo.base, "mp4"),
+                  let thumbSrc = bundled(demo.base, "jpg"),
+                  let hapticsSrc = bundled("\(demo.base).haptics", "json") else {
+                print("⚠️ Demo assets missing for \(demo.base)")
+                continue
             }
-            print("🧹 All data cleared")
-        } catch {
-            print("❌ Failed to clear files: \(error)")
+            let names = (video: "\(demo.base).mp4", thumb: "\(demo.base).jpg",
+                         haptics: "\(demo.base).haptics.json")
+            do {
+                for (src, name) in [(videoSrc, names.video), (thumbSrc, names.thumb), (hapticsSrc, names.haptics)] {
+                    let dst = docs.appendingPathComponent(name)
+                    if !FileManager.default.fileExists(atPath: dst.path) {
+                        try FileManager.default.copyItem(at: src, to: dst)
+                        if name.hasSuffix(".mp4") { excludeFromBackup(dst) }
+                    }
+                }
+                index.removeAll { $0.id == demo.base }
+                index.append(Video(
+                    id: demo.base, title: demo.title,
+                    videoURL: names.video, thumbnailURL: names.thumb,
+                    uploaderID: "demo", uploaderUsername: "HapticVideo",
+                    // Past-dated: a now() timestamp renders as "in 0 sec"
+                    // (clock skew) and staggering gives a natural feed order.
+                    uploadedAt: Date().addingTimeInterval(-Double(demoIndex + 1) * 86_400), duration: demo.duration,
+                    hasHaptics: true, hapticsURL: names.haptics,
+                    views: 0, description: demo.desc))
+                seededAny = true
+            } catch {
+                print("⚠️ Demo seed failed for \(demo.base): \(error)")
+            }
         }
+        if seededAny {
+            try? writeIndex(index)
+            UserDefaults.standard.set(true, forKey: seededKey)
+            print("🎁 Seeded \(demos.count) demo videos")
+        }
+    }
+
+    // MARK: - VideoDataStore
+
+    func fetchAllVideos() async throws -> [Video] {
+        seedDemoContentIfNeeded()
+        if !sweptThisLaunch {
+            sweptThisLaunch = true
+            sweepOrphans()
+        }
+        return try readIndex()
+            .sorted { $0.uploadedAt > $1.uploadedAt }
+            .map(resolved)
+    }
+
+    func fetchVideo(byId id: String) async throws -> Video? {
+        try readIndex().first { $0.id == id }.map(resolved)
+    }
+
+    @discardableResult
+    func uploadVideo(video: Video, videoData: Data, videoFileExtension: String, thumbnailData: Data, hapticsData: Data?) async throws -> Video {
+        var row = video
+        // Preserve the source container extension — renaming (e.g. mov->mp4)
+        // breaks AVURLAsset type inference at playback time.
+        let ext = videoFileExtension.isEmpty ? "mp4" : videoFileExtension
+        let videoName = "\(video.id).\(ext)"
+        let thumbName = "\(video.id).jpg"
+        let videoDst = docs.appendingPathComponent(videoName)
+        try videoData.write(to: videoDst, options: .atomic)
+        excludeFromBackup(videoDst)
+        try thumbnailData.write(to: docs.appendingPathComponent(thumbName), options: .atomic)
+        row.videoURL = videoName
+        row.thumbnailURL = thumbName
+        if let hapticsData {
+            let hapticsName = "\(video.id).haptics.json"
+            try hapticsData.write(to: docs.appendingPathComponent(hapticsName), options: .atomic)
+            row.hapticsURL = hapticsName
+        }
+
+        var index = try readIndex()
+        index.removeAll { $0.id == row.id }
+        index.append(row)
+        try writeIndex(index)
+
+        // Cosmetic: bump the local profile's upload count
+        if var user = loadUser(), user.id == row.uploaderID {
+            user.videosUploaded += 1
+            saveUserMetadata(user)
+        }
+
+        return resolved(row)
+    }
+
+    func incrementViews(videoId: String) async throws {
+        var index = try readIndex()
+        guard let i = index.firstIndex(where: { $0.id == videoId }) else { return }
+        index[i].views += 1
+        try writeIndex(index)
+    }
+
+    func deleteVideo(_ video: Video) async throws {
+        var index = try readIndex()
+        if let row = index.first(where: { $0.id == video.id }) {
+            for name in [row.videoURL, row.thumbnailURL, row.hapticsURL].compactMap({ $0 }) {
+                try? FileManager.default.removeItem(at: docs.appendingPathComponent(name))
+            }
+        }
+        index.removeAll { $0.id == video.id }
+        try writeIndex(index)
+    }
+
+    // MARK: - Local User
+
+    func saveUserMetadata(_ user: User) {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        if let data = try? encoder.encode(user) {
+            UserDefaults.standard.set(data, forKey: userKey)
+        }
+    }
+
+    func loadUser() -> User? {
+        guard let data = UserDefaults.standard.data(forKey: userKey) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try? decoder.decode(User.self, from: data)
+    }
+
+    func clearUser() {
+        UserDefaults.standard.removeObject(forKey: userKey)
     }
 }

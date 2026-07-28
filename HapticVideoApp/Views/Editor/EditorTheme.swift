@@ -45,6 +45,9 @@ struct EditorColors {
     // Audio waveform
     static let waveform          = Color(hex: "4A5560")
 
+    // Curve-point handles (automation/intensity curves)
+    static let curveHandle       = Color(hex: "EDEDF0")
+
     static func color(for type: HapticEventType) -> Color {
         switch type {
         case .transient:  return transient
@@ -113,46 +116,54 @@ struct UIHaptics {
     private static let selection     = UISelectionFeedbackGenerator()
     private static let notification  = UINotificationFeedbackGenerator()
 
+    // Global strength multiplier set by the Profile slider (@AppStorage "hapticStrength").
+    // ponytail: UserDefaults read per call is cheap enough; cache if profiling says otherwise.
+    private static var strength: CGFloat {
+        let v = UserDefaults.standard.double(forKey: "hapticStrength")
+        return v == 0 ? 1.0 : CGFloat(v)
+    }
+
+    private static func scaled(_ base: CGFloat) -> CGFloat {
+        min(1.0, max(0.0, base * strength))
+    }
+
     static func prepare() {
         lightImpact.prepare()
         mediumImpact.prepare()
         selection.prepare()
     }
 
-    static func buttonTap()         { lightImpact.impactOccurred() }
-    static func buttonTapMedium()   { mediumImpact.impactOccurred() }
-    static func buttonTapHeavy()    { heavyImpact.impactOccurred() }
-    static func play()              { mediumImpact.impactOccurred(intensity: 0.8) }
-    static func pause()             { softImpact.impactOccurred(intensity: 0.6) }
-    static func stop()              { rigidImpact.impactOccurred(intensity: 0.7) }
+    static func buttonTap()         { lightImpact.impactOccurred(intensity: scaled(1.0)) }
+    static func buttonTapMedium()   { mediumImpact.impactOccurred(intensity: scaled(1.0)) }
+    static func play()              { mediumImpact.impactOccurred(intensity: scaled(0.8)) }
+    static func pause()             { softImpact.impactOccurred(intensity: scaled(0.6)) }
     static func selectionChanged()  { selection.selectionChanged() }
     static func scrub(intensity: CGFloat = 0.5) {
-        lightImpact.impactOccurred(intensity: min(1.0, max(0.2, intensity)))
+        lightImpact.impactOccurred(intensity: scaled(min(1.0, max(0.2, intensity))))
     }
-    static func snap()              { rigidImpact.impactOccurred(intensity: 0.5) }
-    static func addEvent()          { rigidImpact.impactOccurred(intensity: 0.8) }
+    static func snap()              { rigidImpact.impactOccurred(intensity: scaled(0.5)) }
+    static func addEvent()          { rigidImpact.impactOccurred(intensity: scaled(0.8)) }
     static func deleteEvent()       { notification.notificationOccurred(.warning) }
-    static func selectEvent()       { lightImpact.impactOccurred(intensity: 0.6) }
-    static func dragEvent()         { softImpact.impactOccurred(intensity: 0.3) }
-    static func dropEvent()         { mediumImpact.impactOccurred(intensity: 0.7) }
-    static func zoom()              { lightImpact.impactOccurred(intensity: 0.4) }
+    static func selectEvent()       { lightImpact.impactOccurred(intensity: scaled(0.6)) }
+    static func dragEvent()         { softImpact.impactOccurred(intensity: scaled(0.3)) }
+    static func dropEvent()         { mediumImpact.impactOccurred(intensity: scaled(0.7)) }
+    static func zoom()              { lightImpact.impactOccurred(intensity: scaled(0.4)) }
     static func success()           { notification.notificationOccurred(.success) }
     static func error()             { notification.notificationOccurred(.error) }
-    static func warning()           { notification.notificationOccurred(.warning) }
 
     static func previewEventType(_ type: HapticEventType) {
         switch type {
         case .transient:
-            rigidImpact.impactOccurred(intensity: 1.0)
+            rigidImpact.impactOccurred(intensity: scaled(1.0))
         case .impact:
-            heavyImpact.impactOccurred(intensity: 0.9)
+            heavyImpact.impactOccurred(intensity: scaled(0.9))
         case .continuous:
-            softImpact.impactOccurred(intensity: 0.6)
+            softImpact.impactOccurred(intensity: scaled(0.6))
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                softImpact.impactOccurred(intensity: 0.5)
+                softImpact.impactOccurred(intensity: scaled(0.5))
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                softImpact.impactOccurred(intensity: 0.4)
+                softImpact.impactOccurred(intensity: scaled(0.4))
             }
         }
     }
@@ -202,26 +213,5 @@ enum EditorTool: String, CaseIterable, Identifiable {
         case .impact:     return EditorColors.impact
         case .continuous: return EditorColors.continuous
         }
-    }
-}
-
-// MARK: - Premiere-style Button
-
-struct PremiereChipStyle: ButtonStyle {
-    let isActive: Bool
-    let tint: Color
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundColor(isActive ? .white : EditorColors.textSecondary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(isActive ? tint : EditorColors.surfaceElevated)
-            )
-            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
-            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
     }
 }

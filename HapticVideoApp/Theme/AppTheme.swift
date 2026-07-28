@@ -24,7 +24,6 @@ struct AppColors {
     static let backgroundPrimary = Color(hex: "121212")
     static let backgroundSecondary = Color(hex: "1C1C1E")
     static let backgroundTertiary = Color(hex: "2C2C2E")
-    static let backgroundElevated = Color(hex: "3A3A3C")
     
     // Glass effect
     static let glassBackground = Color.white.opacity(0.08)
@@ -33,85 +32,40 @@ struct AppColors {
     // Text
     static let textPrimary = Color.white
     static let textSecondary = Color(hex: "EBEBF5").opacity(0.6)
-    static let textTertiary = Color(hex: "EBEBF5").opacity(0.3)
-    
+    static let textTertiary = Color(hex: "EBEBF5").opacity(0.45) // was 0.3 (~2.1:1 on backgroundDark); 0.45 ≈ 4:1
+
     // Accents
     static let success = Color(hex: "30D158")
     static let warning = Color(hex: "FFD60A")
     static let error = Color(hex: "FF453A")
     static let info = Color(hex: "5E5CE6")
+    static let demoBadge = Color(hex: "FFD60A") // DEMO badge accent
     
     // Haptic Type Colors
     static let transient = Color(hex: "FF375F")
     static let impact = Color(hex: "5E5CE6")
     static let continuous = Color(hex: "30D158")
     
-    // Gradients
-    static let meshGradient = MeshGradient(
-        width: 3, height: 3,
-        points: [
-            [0.0, 0.0], [0.5, 0.0], [1.0, 0.0],
-            [0.0, 0.5], [0.5, 0.5], [1.0, 0.5],
-            [0.0, 1.0], [0.5, 1.0], [1.0, 1.0]
-        ],
-        colors: [
-            .purple.opacity(0.3), .pink.opacity(0.2), .orange.opacity(0.3),
-            .blue.opacity(0.2), .purple.opacity(0.3), .pink.opacity(0.2),
-            .cyan.opacity(0.3), .blue.opacity(0.2), .purple.opacity(0.3)
-        ]
-    )
-    
-    static let accentGradient = LinearGradient(
-        colors: [Color(hex: "FF2D55"), Color(hex: "AF52DE")],
-        startPoint: .leading,
-        endPoint: .trailing
-    )
-    
-    static let darkGradient = LinearGradient(
-        colors: [Color(hex: "1C1C1E"), Color(hex: "0A0A0A")],
-        startPoint: .top,
-        endPoint: .bottom
-    )
 }
 
 // MARK: - App Typography
 
 struct AppTypography {
-    static let largeTitle = Font.system(size: 34, weight: .bold, design: .rounded)
-    static let title = Font.system(size: 28, weight: .bold, design: .rounded)
-    static let title2 = Font.system(size: 22, weight: .semibold, design: .rounded)
-    static let title3 = Font.system(size: 20, weight: .semibold, design: .rounded)
-    static let headline = Font.system(size: 17, weight: .semibold)
-    static let body = Font.system(size: 17, weight: .regular)
-    static let callout = Font.system(size: 16, weight: .regular)
-    static let subheadline = Font.system(size: 15, weight: .regular)
-    static let footnote = Font.system(size: 13, weight: .regular)
-    static let caption = Font.system(size: 12, weight: .regular)
-    static let caption2 = Font.system(size: 11, weight: .regular)
-    
-    // Monospaced
-    static let mono = Font.system(size: 14, weight: .medium, design: .monospaced)
-    static let monoSmall = Font.system(size: 11, weight: .medium, design: .monospaced)
-}
+    // Text styles scale with Dynamic Type; default sizes match the old fixed values.
+    static let largeTitle = Font.system(.largeTitle, design: .rounded).weight(.bold)
+    static let title = Font.system(.title, design: .rounded).weight(.bold)
+    static let title2 = Font.system(.title2, design: .rounded).weight(.semibold)
+    static let title3 = Font.system(.title3, design: .rounded).weight(.semibold)
+    static let headline = Font.system(.body).weight(.semibold)
+    static let body = Font.system(.body)
+    static let callout = Font.system(.callout)
+    static let subheadline = Font.system(.subheadline)
+    static let footnote = Font.system(.footnote)
+    static let caption = Font.system(.caption)
+    static let caption2 = Font.system(.caption2)
 
-// MARK: - Glass Card Modifier
-
-struct GlassCard: ViewModifier {
-    var cornerRadius: CGFloat = 20
-    var padding: CGFloat = 20
-    
-    func body(content: Content) -> some View {
-        content
-            .padding(padding)
-            .background(
-                RoundedRectangle(cornerRadius: cornerRadius)
-                    .fill(.ultraThinMaterial)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: cornerRadius)
-                            .stroke(AppColors.glassBorder, lineWidth: 1)
-                    )
-            )
-    }
+    // Monospaced (was fixed 14pt; .footnote = 13pt default, closest scaling style)
+    static let mono = Font.system(.footnote, design: .monospaced).weight(.medium)
 }
 
 // MARK: - Primary Button Style
@@ -172,19 +126,6 @@ struct SecondaryButtonStyle: ButtonStyle {
                     UIHaptics.buttonTap()
                 }
             }
-    }
-}
-
-// MARK: - Floating Card Style
-
-struct FloatingCard: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .background(
-                RoundedRectangle(cornerRadius: 24)
-                    .fill(AppColors.backgroundSecondary)
-                    .shadow(color: .black.opacity(0.3), radius: 20, y: 10)
-            )
     }
 }
 
@@ -285,14 +226,6 @@ struct ShimmerModifier: ViewModifier {
 // MARK: - View Extensions
 
 extension View {
-    func glassCard(cornerRadius: CGFloat = 20, padding: CGFloat = 20) -> some View {
-        modifier(GlassCard(cornerRadius: cornerRadius, padding: padding))
-    }
-    
-    func floatingCard() -> some View {
-        modifier(FloatingCard())
-    }
-    
     func shimmer() -> some View {
         modifier(ShimmerModifier())
     }

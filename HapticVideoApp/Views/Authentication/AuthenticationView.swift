@@ -18,6 +18,7 @@ struct AuthenticationView: View {
     @State private var isLoading = false
     @State private var showError = false
     @State private var animateGradient = false
+    @State private var showStartOverConfirm = false
     
     var body: some View {
         ZStack {
@@ -34,12 +35,17 @@ struct AuthenticationView: View {
                     brandingSection
                     
                     // Auth Card
-                    authCard
-                        .padding(.horizontal, 24)
-                    
-                    // Toggle Auth Mode
-                    toggleAuthMode
-                    
+                    if AppBackend.useCloud {
+                        authCard
+                            .padding(.horizontal, 24)
+
+                        // Toggle Auth Mode
+                        toggleAuthMode
+                    } else {
+                        localCard
+                            .padding(.horizontal, 24)
+                    }
+
                     Spacer()
                         .frame(height: 40)
                 }
@@ -53,6 +59,18 @@ struct AuthenticationView: View {
         }
         .onAppear {
             UIHaptics.prepare()
+        }
+        .onChange(of: authViewModel.errorMessage) { _, newValue in
+            if newValue != nil {
+                UIHaptics.error()
+                isLoading = false
+                showError = true
+            }
+        }
+        .onChange(of: authViewModel.isAuthenticated) { _, newValue in
+            if newValue {
+                UIHaptics.success()
+            }
         }
     }
     
@@ -216,7 +234,7 @@ struct AuthenticationView: View {
             if !isSignUp {
                 Button {
                     UIHaptics.buttonTap()
-                    email = "demo@hapticvideo.app"
+                    email = "demo@hapticvideo.com"
                     password = "demo123"
                 } label: {
                     Text("Use Demo Account")
@@ -227,16 +245,106 @@ struct AuthenticationView: View {
             }
         }
         .padding(28)
-        .background(
-            RoundedRectangle(cornerRadius: 28)
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 28)
-                        .stroke(AppColors.glassBorder, lineWidth: 1)
-                )
-        )
+        .background(cardBackground)
     }
-    
+
+    // MARK: - Local Mode Card
+
+    private var localCard: some View {
+        VStack(spacing: 24) {
+            if let profile = authViewModel.savedLocalProfile {
+                // Returning user: profile survives sign-out
+                VStack(spacing: 8) {
+                    Text("Welcome Back")
+                        .font(AppTypography.title2)
+                        .foregroundColor(AppColors.textPrimary)
+
+                    Text("@\(profile.username)")
+                        .font(AppTypography.subheadline)
+                        .foregroundColor(AppColors.textSecondary)
+                }
+
+                Button {
+                    UIHaptics.buttonTapMedium()
+                    authViewModel.continueLocalProfile()
+                } label: {
+                    Text("Continue as \(profile.displayName)")
+                }
+                .buttonStyle(PrimaryButtonStyle(isLoading: false))
+
+                Button {
+                    UIHaptics.buttonTap()
+                    showStartOverConfirm = true
+                } label: {
+                    Text("Start over")
+                        .font(AppTypography.footnote)
+                        .foregroundColor(AppColors.textSecondary)
+                        .underline()
+                }
+            } else {
+                VStack(spacing: 8) {
+                    Text("Create your profile")
+                        .font(AppTypography.title2)
+                        .foregroundColor(AppColors.textPrimary)
+                }
+
+                VStack(spacing: 16) {
+                    ModernTextField(
+                        icon: "person.text.rectangle.fill",
+                        placeholder: "Display Name",
+                        text: $displayName
+                    )
+
+                    ModernTextField(
+                        icon: "person.fill",
+                        placeholder: "Username",
+                        text: $username
+                    )
+                    .textInputAutocapitalization(.never)
+                }
+
+                Button {
+                    UIHaptics.buttonTapMedium()
+                    // Clear stale error so onChange fires again on a repeated identical failure
+                    authViewModel.errorMessage = nil
+                    authViewModel.createLocalProfile(displayName: displayName, username: username)
+                } label: {
+                    Text("Create Profile")
+                }
+                .buttonStyle(PrimaryButtonStyle(isLoading: false))
+                .disabled(username.isEmpty || displayName.isEmpty)
+                .opacity(username.isEmpty || displayName.isEmpty ? 0.6 : 1)
+            }
+
+            Text("Runs fully on-device. Your videos never leave your phone.")
+                .font(AppTypography.footnote)
+                .foregroundColor(AppColors.textSecondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(28)
+        .background(cardBackground)
+        .confirmationDialog(
+            "Start over?",
+            isPresented: $showStartOverConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete profile", role: .destructive) {
+                authViewModel.deleteLocalProfile()
+            }
+        } message: {
+            Text("This removes your on-device profile.")
+        }
+    }
+
+    private var cardBackground: some View {
+        RoundedRectangle(cornerRadius: 28)
+            .fill(.ultraThinMaterial)
+            .overlay(
+                RoundedRectangle(cornerRadius: 28)
+                    .stroke(AppColors.glassBorder, lineWidth: 1)
+            )
+    }
+
     // MARK: - Toggle Auth Mode
     
     private var toggleAuthMode: some View {
@@ -246,7 +354,7 @@ struct AuthenticationView: View {
                 .foregroundColor(AppColors.textSecondary)
             
             Button {
-                UIHaptics.buttonTap()
+                UIHaptics.selectionChanged()
                 withAnimation(.spring(response: 0.3)) {
                     isSignUp.toggle()
                     // Clear fields
@@ -274,7 +382,9 @@ struct AuthenticationView: View {
     private func performAuth() {
         UIHaptics.buttonTapMedium()
         isLoading = true
-        
+        // Clear stale error so onChange fires again on a repeated identical failure
+        authViewModel.errorMessage = nil
+
         // Simulate network delay
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             if isSignUp {
@@ -289,13 +399,6 @@ struct AuthenticationView: View {
             }
             
             isLoading = false
-            
-            if authViewModel.isAuthenticated {
-                UIHaptics.success()
-            } else if authViewModel.errorMessage != nil {
-                UIHaptics.error()
-                showError = true
-            }
         }
     }
 }

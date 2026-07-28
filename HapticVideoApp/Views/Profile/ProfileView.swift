@@ -12,7 +12,11 @@ struct ProfileView: View {
     @State private var showSignOutAlert = false
     @State private var animateStats = false
     @State private var showFeedbackForm = false
-    
+    @State private var showABTest = false
+    @State private var myVideos: [Video] = []
+    @State private var selectedVideo: Video?
+    @AppStorage("hapticStrength") private var hapticStrength: Double = 1.0
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -49,10 +53,14 @@ struct ProfileView: View {
                         statsSection
                             .padding(.horizontal, 20)
                         
+                        // My Videos
+                        myVideosSection
+                            .padding(.horizontal, 20)
+
                         // Account Section
                         accountSection
                             .padding(.horizontal, 20)
-                        
+
                         // Settings Section
                         settingsSection
                             .padding(.horizontal, 20)
@@ -78,23 +86,13 @@ struct ProfileView: View {
                         .font(AppTypography.headline)
                         .foregroundColor(AppColors.textPrimary)
                 }
-                
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        UIHaptics.buttonTap()
-                    } label: {
-                        Image(systemName: "gearshape.fill")
-                            .font(.system(size: 16))
-                            .foregroundColor(AppColors.textSecondary)
-                    }
-                }
             }
             .toolbarBackground(AppColors.backgroundDark, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .alert("Sign Out", isPresented: $showSignOutAlert) {
                 Button("Cancel", role: .cancel) { }
                 Button("Sign Out", role: .destructive) {
-                    UIHaptics.buttonTapMedium()
+                    UIHaptics.selectionChanged()
                     authViewModel.signOut()
                 }
             } message: {
@@ -104,6 +102,18 @@ struct ProfileView: View {
         .preferredColorScheme(.dark)
         .sheet(isPresented: $showFeedbackForm) {
             FeedbackFormView()
+        }
+        .sheet(isPresented: $showABTest) {
+            ABTestView()
+        }
+        .fullScreenCover(item: $selectedVideo, onDismiss: { Task { await loadMyVideos() } }) { video in
+            VideoPlayerView(video: video)
+        }
+        .task {
+            await loadMyVideos()
+        }
+        .refreshable {
+            await loadMyVideos()
         }
         .onAppear {
             UIHaptics.prepare()
@@ -161,23 +171,23 @@ struct ProfileView: View {
         HStack(spacing: 12) {
             StatCard(
                 icon: "play.rectangle.fill",
-                value: "\(authViewModel.currentUser?.videosUploaded ?? 0)",
+                value: "\(myVideos.count)",
                 label: "Videos",
                 color: AppColors.primary,
                 animate: animateStats
             )
-            
+
             StatCard(
                 icon: "waveform.path",
-                value: "\(authViewModel.currentUser?.videosUploaded ?? 0)",
+                value: "\(myVideos.filter(\.hasHaptics).count)",
                 label: "Haptics",
                 color: AppColors.info,
                 animate: animateStats
             )
-            
+
             StatCard(
                 icon: "eye.fill",
-                value: "0",
+                value: "\(myVideos.reduce(0) { $0 + $1.views })",
                 label: "Views",
                 color: AppColors.success,
                 animate: animateStats
@@ -185,6 +195,56 @@ struct ProfileView: View {
         }
     }
     
+    // MARK: - My Videos
+
+    private var myVideosSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("MY VIDEOS")
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundColor(AppColors.textTertiary)
+
+            if myVideos.isEmpty {
+                Text("No videos yet — upload one from the Upload tab.")
+                    .font(AppTypography.subheadline)
+                    .foregroundColor(AppColors.textSecondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 24)
+                    .background(AppColors.backgroundSecondary)
+                    .cornerRadius(16)
+            } else {
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible())], spacing: 12) {
+                    ForEach(myVideos) { video in
+                        MyVideoCell(video: video)
+                            .onTapGesture {
+                                UIHaptics.buttonTap()
+                                selectedVideo = video
+                            }
+                            .contextMenu {
+                                Button(role: .destructive) {
+                                    Task { await delete(video) }
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
+                    }
+                }
+            }
+        }
+    }
+
+    private func loadMyVideos() async {
+        guard let userID = authViewModel.currentUser?.id else { return }
+        let all = (try? await AppBackend.store.fetchAllVideos()) ?? []
+        // Demo seed videos (uploaderID "demo") are not the user's.
+        myVideos = all.filter { $0.uploaderID == userID && $0.uploaderID != "demo" }
+    }
+
+    private func delete(_ video: Video) async {
+        UIHaptics.deleteEvent()
+        try? await AppBackend.store.deleteVideo(video)
+        myVideos.removeAll { $0.id == video.id }
+    }
+
     // MARK: - Account Section
     
     private var accountSection: some View {
@@ -197,7 +257,9 @@ struct ProfileView: View {
                 ProfileRow(
                     icon: "envelope.fill",
                     title: "Email",
-                    value: authViewModel.currentUser?.email ?? "—"
+                    // Local profiles have no email — show a dash, not blank
+                    value: (authViewModel.currentUser?.email.isEmpty == false)
+                        ? authViewModel.currentUser!.email : "—"
                 )
                 
                 Divider()
@@ -232,26 +294,55 @@ struct ProfileView: View {
                 .foregroundColor(AppColors.textTertiary)
             
             VStack(spacing: 0) {
-                SettingsRow(icon: "bell.fill", title: "Notifications", hasToggle: true)
-                
+                // Haptic Strength
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "hand.tap.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(AppColors.textTertiary)
+                            .frame(width: 24)
+
+                        Text("Haptic Strength")
+                            .font(AppTypography.subheadline)
+                            .foregroundColor(AppColors.textPrimary)
+
+                        Spacer()
+
+                        Text(String(format: "%.1fx", hapticStrength))
+                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                            .foregroundColor(AppColors.textSecondary)
+                    }
+
+                    Slider(value: $hapticStrength, in: 0.5...1.5, step: 0.1)
+                        .tint(AppColors.primary)
+                        .onChange(of: hapticStrength) { _, _ in
+                            UIHaptics.selectionChanged()
+                        }
+                }
+                .padding(16)
+
                 Divider()
                     .background(AppColors.backgroundTertiary)
-                
-                SettingsRow(icon: "hand.tap.fill", title: "Haptic Feedback", hasToggle: true, isOn: true)
-                
+
+                Button {
+                    UIHaptics.buttonTap()
+                    showABTest = true
+                } label: {
+                    SettingsRow(
+                        icon: "waveform.path.ecg",
+                        title: "Haptic Lab",
+                        subtitle: "Blind A/B test your haptics"
+                    )
+                }
+
                 Divider()
                     .background(AppColors.backgroundTertiary)
-                
-                SettingsRow(icon: "moon.fill", title: "Dark Mode", hasToggle: true, isOn: true)
-                
-                Divider()
-                    .background(AppColors.backgroundTertiary)
-                
+
                 Button {
                     UIHaptics.buttonTap()
                     showFeedbackForm = true
                 } label: {
-                    SettingsRow(icon: "bubble.left.and.bubble.right.fill", title: "Give Feedback", hasToggle: false)
+                    SettingsRow(icon: "bubble.left.and.bubble.right.fill", title: "Give Feedback")
                 }
             }
             .background(AppColors.backgroundSecondary)
@@ -343,6 +434,9 @@ struct StatCard: View {
         .cornerRadius(16)
         .scaleEffect(animate ? 1 : 0.8)
         .opacity(animate ? 1 : 0)
+        .onTapGesture {
+            UIHaptics.selectionChanged()
+        }
     }
 }
 
@@ -380,36 +474,78 @@ struct ProfileRow: View {
 struct SettingsRow: View {
     let icon: String
     let title: String
-    var hasToggle: Bool = false
-    @State var isOn: Bool = false
-    
+    var subtitle: String? = nil
+
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 16))
                 .foregroundColor(AppColors.textTertiary)
                 .frame(width: 24)
-            
-            Text(title)
-                .font(AppTypography.subheadline)
-                .foregroundColor(AppColors.textPrimary)
-            
-            Spacer()
-            
-            if hasToggle {
-                Toggle("", isOn: $isOn)
-                    .tint(AppColors.primary)
-                    .scaleEffect(0.9)
-                    .onChange(of: isOn) { _, _ in
-                        UIHaptics.selectionChanged()
-                    }
-            } else {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(AppColors.textTertiary)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(AppTypography.subheadline)
+                    .foregroundColor(AppColors.textPrimary)
+
+                if let subtitle {
+                    Text(subtitle)
+                        .font(AppTypography.caption)
+                        .foregroundColor(AppColors.textSecondary)
+                }
             }
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(AppColors.textTertiary)
         }
         .padding(16)
+    }
+}
+
+// MARK: - My Video Cell
+
+struct MyVideoCell: View {
+    let video: Video
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            AsyncImage(url: URL(string: video.thumbnailURL)) { phase in
+                if case .success(let image) = phase {
+                    image.resizable().aspectRatio(contentMode: .fill)
+                } else {
+                    ZStack {
+                        AppColors.backgroundTertiary
+                        Image(systemName: "play.rectangle.fill")
+                            .font(.system(size: 24))
+                            .foregroundColor(AppColors.textTertiary)
+                    }
+                }
+            }
+            .frame(height: 100)
+            .frame(maxWidth: .infinity)
+            .clipped()
+            .cornerRadius(12)
+
+            Text(video.title)
+                .font(AppTypography.subheadline)
+                .foregroundColor(AppColors.textPrimary)
+                .lineLimit(1)
+
+            HStack(spacing: 4) {
+                Image(systemName: "eye.fill")
+                    .font(.system(size: 10))
+                Text("\(video.views) views")
+                    .font(AppTypography.caption)
+            }
+            .foregroundColor(AppColors.textSecondary)
+        }
+        .padding(8)
+        .background(AppColors.backgroundSecondary)
+        .cornerRadius(16)
+        .contentShape(Rectangle())
     }
 }
 

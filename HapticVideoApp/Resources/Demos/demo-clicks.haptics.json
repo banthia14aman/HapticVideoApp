@@ -1,0 +1,203 @@
+{
+ "id": "C91CF771-50A6-46E9-BC6E-E1241B6DCD40",
+ "videoID": "demo-clicks",
+ "events": [
+  {
+   "id": "8348C2DA-1065-43DC-8386-0BA6B0FE4D0D",
+   "time": 0.0,
+   "intensity": 0.85,
+   "sharpness": 0.95,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "67F17A6A-4E66-489A-A53F-74B6A2F122D2",
+   "time": 0.375,
+   "intensity": 0.3,
+   "sharpness": 0.75,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "5BCC9F20-2155-4EE7-8E73-341C524C0B02",
+   "time": 0.75,
+   "intensity": 0.85,
+   "sharpness": 0.95,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "FC2AE217-ED07-4399-8C20-B29C59B65FE9",
+   "time": 1.125,
+   "intensity": 0.3,
+   "sharpness": 0.75,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "69B0F6E0-1115-48D9-8246-0854174811E3",
+   "time": 1.5,
+   "intensity": 0.85,
+   "sharpness": 0.95,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "942B01AF-112F-49C6-9C94-586B9A41AFD5",
+   "time": 1.875,
+   "intensity": 0.3,
+   "sharpness": 0.75,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "9B13AA5E-EFFE-4814-815A-D42FE76AABEC",
+   "time": 2.25,
+   "intensity": 0.85,
+   "sharpness": 0.95,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "5B755139-BC37-4988-8525-432F3E1ACA49",
+   "time": 2.625,
+   "intensity": 0.3,
+   "sharpness": 0.75,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "378BF11D-DA47-4E6E-8089-8B82BA9F0E91",
+   "time": 3.0,
+   "intensity": 0.85,
+   "sharpness": 0.95,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "125E1144-0FF4-46F7-81B5-790257D1D412",
+   "time": 3.375,
+   "intensity": 0.3,
+   "sharpness": 0.75,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "58BDF06C-F981-40A1-972A-54588C863570",
+   "time": 3.75,
+   "intensity": 0.85,
+   "sharpness": 0.95,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "30710331-DEB9-43C6-876D-53C33A566BA2",
+   "time": 4.125,
+   "intensity": 0.3,
+   "sharpness": 0.75,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "1BC8CB7B-33D0-45BC-B45F-293790FCA941",
+   "time": 4.5,
+   "intensity": 0.85,
+   "sharpness": 0.95,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "4C8A268A-94C2-47A0-85BB-323F62E011FB",
+   "time": 4.875,
+   "intensity": 0.3,
+   "sharpness": 0.75,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "6F04DDEF-9BA8-460B-8707-40BDBFA5D83C",
+   "time": 5.25,
+   "intensity": 0.85,
+   "sharpness": 0.95,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "926795B1-DF9F-4929-AB39-16EF7D7AF9DE",
+   "time": 5.625,
+   "intensity": 0.3,
+   "sharpness": 0.75,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "A4D07803-27F8-42E2-AAE5-97E53B88F791",
+   "time": 6.0,
+   "intensity": 0.85,
+   "sharpness": 0.95,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "9CAD1F51-23E2-4E4E-8CBF-41AA2CDD6F63",
+   "time": 6.375,
+   "intensity": 0.3,
+   "sharpness": 0.75,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "059C1E27-8DDD-44E7-BA6D-23CD2F8C56A7",
+   "time": 6.75,
+   "intensity": 0.85,
+   "sharpness": 0.95,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "0359A2BA-4CB3-4B2B-AEF1-F0956B798B86",
+   "time": 7.125,
+   "intensity": 0.3,
+   "sharpness": 0.75,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "C9258471-4BF4-4A2A-A252-52EB8349AEAB",
+   "time": 7.5,
+   "intensity": 0.85,
+   "sharpness": 0.95,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "1411E932-9F93-4A84-AE37-DA013C34EF1A",
+   "time": 7.875,
+   "intensity": 0.3,
+   "sharpness": 0.75,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "BD8E25E3-0016-4985-8421-99F3FE644D36",
+   "time": 8.25,
+   "intensity": 0.85,
+   "sharpness": 0.95,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "874458ED-092C-4BC0-8459-2166A8581167",
+   "time": 8.625,
+   "intensity": 0.3,
+   "sharpness": 0.75,
+   "duration": 0.0,
+   "type": "transient"
+  }
+ ],
+ "metadata": {
+  "createdAt": "2026-07-27T00:00:00Z",
+  "updatedAt": "2026-07-27T00:00:00Z",
+  "version": "2.0"
+ }
+}

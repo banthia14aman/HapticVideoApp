@@ -86,9 +86,17 @@ struct FeedbackFormView: View {
         \(featureRequest.isEmpty ? "None" : featureRequest)
         """
         
-        let urlString = "https://github.com/banthia14aman/HapticVideoApp/issues/new?title=\(title.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")&body=\(body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")"
-        
-        if let url = URL(string: urlString) {
+        // .urlQueryAllowed leaves & + = unescaped, which corrupts the GitHub
+        // issue query string (+ becomes space, & splits params). Escape them.
+        var allowed = CharacterSet.urlQueryAllowed
+        allowed.remove(charactersIn: "+&=")
+        var components = URLComponents(string: "https://github.com/banthia14aman/HapticVideoApp/issues/new")!
+        components.percentEncodedQueryItems = [
+            URLQueryItem(name: "title", value: title.addingPercentEncoding(withAllowedCharacters: allowed) ?? ""),
+            URLQueryItem(name: "body", value: body.addingPercentEncoding(withAllowedCharacters: allowed) ?? "")
+        ]
+
+        if let url = components.url {
             UIApplication.shared.open(url)
             presentationMode.wrappedValue.dismiss()
         }

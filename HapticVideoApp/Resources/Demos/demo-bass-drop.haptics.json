@@ -1,0 +1,373 @@
+{
+ "id": "DC97F3F2-C8F6-4DA1-BB7A-99F796AF306B",
+ "videoID": "demo-bass-drop",
+ "events": [
+  {
+   "id": "38C8AFC0-D320-46EF-A99A-95D4B96FA89D",
+   "time": 0.5,
+   "intensity": 1.0,
+   "sharpness": 0.3,
+   "duration": 3.5,
+   "type": "continuous",
+   "intensityCurve": [
+    {
+     "time": 0,
+     "value": 0.1
+    },
+    {
+     "time": 0.5,
+     "value": 0.16
+    },
+    {
+     "time": 1.0,
+     "value": 0.24
+    },
+    {
+     "time": 1.5,
+     "value": 0.32
+    },
+    {
+     "time": 2.0,
+     "value": 0.42
+    },
+    {
+     "time": 2.5,
+     "value": 0.52
+    },
+    {
+     "time": 3.0,
+     "value": 0.62
+    },
+    {
+     "time": 3.3,
+     "value": 0.7
+    },
+    {
+     "time": 3.5,
+     "value": 0.0
+    }
+   ]
+  },
+  {
+   "id": "AE58A300-265E-4BEF-B440-E96591758EBB",
+   "time": 4.5,
+   "intensity": 1.0,
+   "sharpness": 0.7,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "158D8EFF-CD9C-44EA-BBF7-DFE82A426C77",
+   "time": 4.53,
+   "intensity": 1.0,
+   "sharpness": 0.12,
+   "duration": 0.45,
+   "type": "continuous",
+   "intensityCurve": [
+    {
+     "time": 0,
+     "value": 0.7
+    },
+    {
+     "time": 0.18,
+     "value": 0.35
+    },
+    {
+     "time": 0.45,
+     "value": 0.0
+    }
+   ]
+  },
+  {
+   "id": "820EA276-0FA9-47E3-9990-E8E84BEBB800",
+   "time": 5.0,
+   "intensity": 0.85,
+   "sharpness": 0.35,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "7D79C230-E8FD-4616-988F-A8734E319233",
+   "time": 5.0,
+   "intensity": 1.0,
+   "sharpness": 0.15,
+   "duration": 5.4,
+   "type": "continuous",
+   "intensityCurve": [
+    {
+     "time": 0.0,
+     "value": 0.08
+    },
+    {
+     "time": 0.125,
+     "value": 0.32
+    },
+    {
+     "time": 0.25,
+     "value": 0.32
+    },
+    {
+     "time": 0.375,
+     "value": 0.32
+    },
+    {
+     "time": 0.5,
+     "value": 0.08
+    },
+    {
+     "time": 0.625,
+     "value": 0.32
+    },
+    {
+     "time": 0.75,
+     "value": 0.32
+    },
+    {
+     "time": 0.875,
+     "value": 0.32
+    },
+    {
+     "time": 1.0,
+     "value": 0.08
+    },
+    {
+     "time": 1.125,
+     "value": 0.32
+    },
+    {
+     "time": 1.25,
+     "value": 0.32
+    },
+    {
+     "time": 1.375,
+     "value": 0.32
+    },
+    {
+     "time": 1.5,
+     "value": 0.08
+    },
+    {
+     "time": 1.625,
+     "value": 0.32
+    },
+    {
+     "time": 1.75,
+     "value": 0.32
+    },
+    {
+     "time": 1.875,
+     "value": 0.32
+    },
+    {
+     "time": 2.0,
+     "value": 0.08
+    },
+    {
+     "time": 2.125,
+     "value": 0.32
+    },
+    {
+     "time": 2.25,
+     "value": 0.32
+    },
+    {
+     "time": 2.375,
+     "value": 0.32
+    },
+    {
+     "time": 2.5,
+     "value": 0.08
+    },
+    {
+     "time": 2.625,
+     "value": 0.32
+    },
+    {
+     "time": 2.75,
+     "value": 0.32
+    },
+    {
+     "time": 2.875,
+     "value": 0.32
+    },
+    {
+     "time": 3.0,
+     "value": 0.08
+    },
+    {
+     "time": 3.125,
+     "value": 0.32
+    },
+    {
+     "time": 3.25,
+     "value": 0.32
+    },
+    {
+     "time": 3.375,
+     "value": 0.32
+    },
+    {
+     "time": 3.5,
+     "value": 0.08
+    },
+    {
+     "time": 3.625,
+     "value": 0.32
+    },
+    {
+     "time": 3.75,
+     "value": 0.32
+    },
+    {
+     "time": 3.875,
+     "value": 0.32
+    },
+    {
+     "time": 4.0,
+     "value": 0.08
+    },
+    {
+     "time": 4.125,
+     "value": 0.32
+    },
+    {
+     "time": 4.25,
+     "value": 0.32
+    },
+    {
+     "time": 4.375,
+     "value": 0.32
+    },
+    {
+     "time": 4.5,
+     "value": 0.08
+    },
+    {
+     "time": 4.625,
+     "value": 0.32
+    },
+    {
+     "time": 4.75,
+     "value": 0.32
+    },
+    {
+     "time": 4.875,
+     "value": 0.32
+    },
+    {
+     "time": 5.0,
+     "value": 0.08
+    },
+    {
+     "time": 5.125,
+     "value": 0.32
+    },
+    {
+     "time": 5.25,
+     "value": 0.32
+    },
+    {
+     "time": 5.375,
+     "value": 0.32
+    },
+    {
+     "time": 5.4,
+     "value": 0.0
+    }
+   ]
+  },
+  {
+   "id": "D36731E7-6945-48E5-AA43-230E292D31F7",
+   "time": 5.5,
+   "intensity": 0.75,
+   "sharpness": 0.35,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "760DFA35-CC10-4AE4-A9ED-9063F59E6FBB",
+   "time": 6.0,
+   "intensity": 0.85,
+   "sharpness": 0.35,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "34EC8AD1-4DB2-4DF4-9871-6395D8DC1A46",
+   "time": 6.5,
+   "intensity": 0.75,
+   "sharpness": 0.35,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "7052CE65-2465-4A09-B125-398AE766BF83",
+   "time": 7.0,
+   "intensity": 0.85,
+   "sharpness": 0.35,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "A1CB14D4-1CBD-473F-B8AD-094D4BBB2E10",
+   "time": 7.5,
+   "intensity": 0.75,
+   "sharpness": 0.35,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "EF31F793-BAED-4E85-9C7A-BF9AB45CA147",
+   "time": 8.0,
+   "intensity": 0.85,
+   "sharpness": 0.35,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "5344CBC4-7C4B-492D-8976-28ED733A29BB",
+   "time": 8.5,
+   "intensity": 0.75,
+   "sharpness": 0.35,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "4CFD29C5-4D66-4081-9E9F-5148CCCA3F65",
+   "time": 9.0,
+   "intensity": 0.85,
+   "sharpness": 0.35,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "30DB4231-469D-4F3B-AFDE-A600BA29B252",
+   "time": 9.5,
+   "intensity": 0.75,
+   "sharpness": 0.35,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "B0D5A824-61C1-46F7-8694-0C1D0523C365",
+   "time": 10.0,
+   "intensity": 0.85,
+   "sharpness": 0.35,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "7A276116-B15C-4EB8-AE6D-D181EF4254AC",
+   "time": 10.5,
+   "intensity": 1.0,
+   "sharpness": 0.5,
+   "duration": 0.0,
+   "type": "transient"
+  }
+ ],
+ "metadata": {
+  "createdAt": "2026-07-27T00:00:00Z",
+  "updatedAt": "2026-07-27T00:00:00Z",
+  "version": "2.0"
+ }
+}

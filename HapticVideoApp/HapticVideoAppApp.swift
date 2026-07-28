@@ -4,25 +4,16 @@
 //
 
 import SwiftUI
-import FirebaseCore
-
-class AppDelegate: NSObject, UIApplicationDelegate {
-    func application(_ application: UIApplication,
-                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
-        FirebaseApp.configure()
-        return true
-    }
-}
 
 @main
 struct HapticVideoAppApp: App {
-    @UIApplicationDelegateAdaptor(AppDelegate.self) var delegate
     @StateObject private var authViewModel = AuthenticationViewModel()
     @StateObject private var feedViewModel = FeedViewModel()
-    
+    @Environment(\.scenePhase) private var scenePhase
+
+    // ponytail: item-based sheet — no separate bool, sheet can never present with a nil video
     @State private var sharedVideoToOpen: Video?
-    @State private var showSharedVideo = false
-    
+
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -31,25 +22,33 @@ struct HapticVideoAppApp: App {
                 .onOpenURL { url in
                     handleDeepLink(url)
                 }
-                .sheet(isPresented: $showSharedVideo) {
-                    if let video = sharedVideoToOpen {
-                        VideoPlayerView(video: video)
+                .sheet(item: $sharedVideoToOpen) { video in
+                    VideoPlayerView(video: video)
+                }
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .background {
+                        NotificationCenter.default.post(name: Notification.Name("app.background"), object: nil)
                     }
                 }
         }
     }
-    
+
+    // Handles hapticapp://video/<id> and https://hapticvideoapp.com/v/<id>
     private func handleDeepLink(_ url: URL) {
-        // Example URL: hapticapp://video/12345
-        // Or Universal Link: https://hapticvideoapp.com/v/12345
-        
-        let pathComponents = url.pathComponents
-        if pathComponents.contains("video") || pathComponents.contains("v"), let id = pathComponents.last {
-            feedViewModel.fetchSpecificVideo(byId: id) { video in
-                if let video = video {
-                    self.sharedVideoToOpen = video
-                    self.showSharedVideo = true
-                }
+        let parts = url.pathComponents.filter { $0 != "/" }
+        let id: String?
+        if url.host == "video" || url.host == "v" {
+            id = parts.first
+        } else if let i = parts.firstIndex(where: { $0 == "video" || $0 == "v" }), i + 1 < parts.count {
+            id = parts[i + 1]
+        } else {
+            id = nil
+        }
+        guard let id, !id.isEmpty else { return }
+        feedViewModel.fetchSpecificVideo(byId: id) { video in
+            if let video {
+                sharedVideoToOpen = video
+                UIHaptics.buttonTapMedium()
             }
         }
     }

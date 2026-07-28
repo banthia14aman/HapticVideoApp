@@ -22,6 +22,14 @@ enum HapticEventType: String, Codable, CaseIterable {
     case continuous
 }
 
+// MARK: - Haptic Curve Point
+
+/// One control point of an intensity envelope, time relative to event start.
+struct HapticCurvePoint: Codable, Equatable {
+    var time: Double
+    var value: Float
+}
+
 // MARK: - Haptic Event
 
 struct HapticEvent: Identifiable, Codable {
@@ -31,14 +39,25 @@ struct HapticEvent: Identifiable, Codable {
     var sharpness: Float
     var duration: Double
     var type: HapticEventType
-    
-    init(id: UUID = UUID(), time: Double, intensity: Float, sharpness: Float, duration: Double, type: HapticEventType) {
+    /// Waveform-following envelope for continuous events (nil = flat).
+    /// `intensity` acts as a master gain over the curve.
+    var intensityCurve: [HapticCurvePoint]?
+    /// Frequency-feel sweep for continuous events (nil = static sharpness).
+    /// Absolute target values; playback converts to additive deltas against
+    /// `sharpness`. This is what makes an engine rev FEEL like rising RPM.
+    var sharpnessCurve: [HapticCurvePoint]?
+
+    init(id: UUID = UUID(), time: Double, intensity: Float, sharpness: Float,
+         duration: Double, type: HapticEventType, intensityCurve: [HapticCurvePoint]? = nil,
+         sharpnessCurve: [HapticCurvePoint]? = nil) {
         self.id = id
         self.time = time
         self.intensity = intensity
         self.sharpness = sharpness
         self.duration = duration
         self.type = type
+        self.intensityCurve = intensityCurve
+        self.sharpnessCurve = sharpnessCurve
     }
 }
 
@@ -76,47 +95,13 @@ struct PatternMetadata: Codable {
     }
 }
 
-// MARK: - CHHapticPattern Extension
-
-extension HapticPattern {
-    func toCHHapticPattern() throws -> CHHapticPattern {
-        var chEvents: [CHHapticEvent] = []
-        
-        for event in events {
-            let parameters: [CHHapticEventParameter] = [
-                CHHapticEventParameter(parameterID: .hapticIntensity, value: event.intensity),
-                CHHapticEventParameter(parameterID: .hapticSharpness, value: event.sharpness)
-            ]
-            
-            switch event.type {
-            case .transient, .impact:
-                chEvents.append(
-                    CHHapticEvent(
-                        eventType: .hapticTransient,
-                        parameters: parameters,
-                        relativeTime: event.time
-                    )
-                )
-            case .continuous:
-                chEvents.append(
-                    CHHapticEvent(
-                        eventType: .hapticContinuous,
-                        parameters: parameters,
-                        relativeTime: event.time,
-                        duration: event.duration
-                    )
-                )
-            }
-        }
-        
-        return try CHHapticPattern(events: chEvents, parameters: [])
-    }
-}
-
 extension HapticEvent {
     func toCHHapticEvent() throws -> CHHapticEvent {
+        // Curved continuous events play at full base intensity — the
+        // pattern-level intensity curve (envelope × gain) does the shaping.
+        let hasCurve = type == .continuous && !(intensityCurve?.isEmpty ?? true)
         let parameters: [CHHapticEventParameter] = [
-            CHHapticEventParameter(parameterID: .hapticIntensity, value: intensity),
+            CHHapticEventParameter(parameterID: .hapticIntensity, value: hasCurve ? 1.0 : intensity),
             CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
         ]
         
@@ -135,19 +120,5 @@ extension HapticEvent {
                 duration: duration
             )
         }
-    }
-}
-
-// MARK: - Curve Point (for automation lanes)
-
-struct CurvePoint: Identifiable, Codable {
-    var id: UUID = UUID()
-    var time: Double
-    var value: Float
-    
-    init(id: UUID = UUID(), time: Double, value: Float) {
-        self.id = id
-        self.time = time
-        self.value = value
     }
 }

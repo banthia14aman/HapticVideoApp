@@ -27,6 +27,8 @@ struct DAWTimelineView: View {
     var onMoveEvent: (UUID, Double) -> Void
     var onDeleteEvent: (UUID) -> Void
     var onSelectEvent: (HapticEvent) -> Void
+    /// Curve point edits on continuous events. Wire in parent (see INTEGRATION).
+    var onUpdateCurve: ((UUID, [HapticCurvePoint]) -> Void)? = nil
 
     private static let trackOrder: [HapticEventType] = [.transient, .impact, .continuous]
 
@@ -40,6 +42,11 @@ struct DAWTimelineView: View {
 
     @State private var draggingEventID: UUID?
     @State private var dragOffsetSeconds: Double = 0
+    @State private var lastScrubTime: Double?
+    @State private var snapEnabled = true
+    @State private var lastSnappedTime: Double?
+    @State private var curveDragIndex: Int?
+    @State private var curveDragStartValue: Float = 0
 
     var body: some View {
         HStack(spacing: 0) {
@@ -72,7 +79,20 @@ struct DAWTimelineView: View {
 
     private var trackLabelsColumn: some View {
         VStack(spacing: 0) {
-            Color.clear.frame(height: EditorDimensions.timeRulerHeight)
+            // Snap-to-grid toggle, tucked into the ruler-height gap
+            Button {
+                snapEnabled.toggle()
+                UIHaptics.buttonTap()
+            } label: {
+                // ponytail: SF Symbols has no magnet; grid icon reads as snap-to-grid
+                Image(systemName: snapEnabled ? "square.grid.3x3.fill" : "square.grid.3x3")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(snapEnabled ? EditorColors.accent : EditorColors.textTertiary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: EditorDimensions.timeRulerHeight)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
 
             trackLabel(icon: "film", title: "V1", color: EditorColors.textSecondary, height: EditorDimensions.videoTrackHeight)
 
@@ -152,9 +172,29 @@ struct DAWTimelineView: View {
             DragGesture(minimumDistance: 0)
                 .onChanged { value in
                     let t = max(0, min(videoDuration, Double(value.location.x / pixelsPerSecond)))
+                    if let prev = lastScrubTime {
+                        tickCrossedEvents(from: prev, to: t)
+                    }
+                    lastScrubTime = t
                     onSeek(t)
                 }
+                .onEnded { _ in
+                    lastScrubTime = nil
+                }
         )
+    }
+
+    /// Fire one scrub tick when the playhead crosses an event, scaled to its
+    /// intensity — so scrubbing lets you feel the pattern. Throttled to one
+    /// tick per crossing, not per frame.
+    private func tickCrossedEvents(from prev: Double, to t: Double) {
+        guard prev != t else { return }
+        let lo = min(prev, t)
+        let hi = max(prev, t)
+        // ponytail: multiple events crossed in one frame collapse to the strongest tick
+        if let hit = events.filter({ $0.time > lo && $0.time <= hi }).max(by: { $0.intensity < $1.intensity }) {
+            UIHaptics.scrub(intensity: CGFloat(hit.intensity))
+        }
     }
 
     // MARK: - Video Track (frame strip)
@@ -298,19 +338,28 @@ struct DAWTimelineView: View {
         .simultaneousGesture(
             DragGesture(minimumDistance: 6)
                 .onChanged { value in
+                    guard curveDragIndex == nil else { return }
                     if draggingEventID != event.id {
                         draggingEventID = event.id
                         UIHaptics.dragEvent()
                         onSelectEvent(event)
                     }
-                    dragOffsetSeconds = Double(value.translation.width / pixelsPerSecond)
+                    let raw = event.time + Double(value.translation.width / pixelsPerSecond)
+                    let snapped = snappedTime(raw)
+                    if snapEnabled, snapped != lastSnappedTime {
+                        UIHaptics.snap()
+                        lastSnappedTime = snapped
+                    }
+                    dragOffsetSeconds = snapped - event.time
                 }
                 .onEnded { value in
-                    let deltaSeconds = Double(value.translation.width / pixelsPerSecond)
-                    let newTime = max(0, min(videoDuration - 0.05, event.time + deltaSeconds))
+                    guard draggingEventID == event.id else { return }
+                    let raw = event.time + Double(value.translation.width / pixelsPerSecond)
+                    let newTime = max(0, min(videoDuration - 0.05, snappedTime(raw)))
                     onMoveEvent(event.id, newTime)
                     draggingEventID = nil
                     dragOffsetSeconds = 0
+                    lastSnappedTime = nil
                     UIHaptics.dropEvent()
                 }
         )
@@ -339,11 +388,15 @@ struct DAWTimelineView: View {
             .shadow(color: isActive ? laneColor.opacity(0.9) : .clear, radius: isActive ? 8 : 0)
             .scaleEffect(isActive ? 1.2 : 1.0)
         }
+        // 44pt hit target; visuals unchanged
+        .frame(width: 44, height: 44)
+        .contentShape(Rectangle())
     }
 
     private func continuousEventBar(event: HapticEvent, laneColor: Color, isSelected: Bool, isActive: Bool, intensityScale: CGFloat) -> some View {
         let width = max(8, CGFloat(event.duration) * pixelsPerSecond)
         let height: CGFloat = 22 * intensityScale
+        let hasCurve = (event.intensityCurve?.count ?? 0) > 1
 
         return ZStack {
             if isSelected {
@@ -353,17 +406,93 @@ struct DAWTimelineView: View {
             }
             RoundedRectangle(cornerRadius: 4)
                 .fill(LinearGradient(
-                    colors: [laneColor.opacity(0.95), laneColor.opacity(0.65)],
+                    // Curve events get a faint block so the envelope reads on top
+                    colors: hasCurve
+                        ? [laneColor.opacity(0.30), laneColor.opacity(0.15)]
+                        : [laneColor.opacity(0.95), laneColor.opacity(0.65)],
                     startPoint: .top,
                     endPoint: .bottom
                 ))
                 .frame(width: width, height: height)
+                .overlay {
+                    if hasCurve, let curve = event.intensityCurve {
+                        envelopeWaveform(curve: curve, duration: event.duration, laneColor: laneColor)
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                    }
+                }
                 .overlay(
                     RoundedRectangle(cornerRadius: 4)
                         .stroke(laneColor, lineWidth: 1)
                 )
+                .overlay {
+                    if isSelected, hasCurve, let curve = event.intensityCurve {
+                        curveHandles(event: event, curve: curve, width: width, height: height, laneColor: laneColor)
+                    }
+                }
                 .shadow(color: isActive ? laneColor.opacity(0.9) : .clear, radius: isActive ? 8 : 0)
                 .scaleEffect(y: isActive ? 1.15 : 1.0, anchor: .center)
+        }
+        // 44pt hit target; visuals unchanged
+        .frame(width: max(width, 44), height: EditorDimensions.hapticTrackHeight)
+        .contentShape(Rectangle())
+    }
+
+    /// Draggable handles on a selected continuous event's curve points.
+    /// Vertical drag changes that point's value (0–1) via onUpdateCurve.
+    private func curveHandles(event: HapticEvent, curve: [HapticCurvePoint], width: CGFloat, height: CGFloat, laneColor: Color) -> some View {
+        ForEach(curve.indices, id: \.self) { i in
+            let x = CGFloat(max(0, min(1, curve[i].time / event.duration))) * width
+            let y = height * (1 - CGFloat(max(0, min(1, curve[i].value))))
+            Circle()
+                .fill(Color.white)
+                .overlay(Circle().stroke(laneColor, lineWidth: 1.5))
+                .frame(width: 9, height: 9)
+                .frame(width: 36, height: 36)   // hit target
+                .contentShape(Rectangle())
+                .position(x: x, y: y)
+                .highPriorityGesture(
+                    DragGesture(minimumDistance: 1)
+                        .onChanged { g in
+                            if curveDragIndex == nil {
+                                curveDragIndex = i
+                                curveDragStartValue = curve[i].value
+                                UIHaptics.dragEvent()
+                            }
+                            var updated = curve
+                            updated[i].value = Float(max(0, min(1, Double(curveDragStartValue) - Double(g.translation.height / height))))
+                            onUpdateCurve?(event.id, updated)
+                        }
+                        .onEnded { _ in
+                            curveDragIndex = nil
+                            UIHaptics.dropEvent()
+                        }
+                )
+        }
+    }
+
+    /// Filled waveform of an envelope-following continuous event's intensity
+    /// curve. Baseline at the bottom of the bar, curve value = height.
+    private func envelopeWaveform(curve: [HapticCurvePoint], duration: Double, laneColor: Color) -> some View {
+        Canvas { context, size in
+            guard duration > 0 else { return }
+            var path = Path()
+            path.move(to: CGPoint(x: 0, y: size.height))
+            for point in curve {
+                let x = CGFloat(max(0, min(1, point.time / duration))) * size.width
+                let y = size.height * (1 - CGFloat(max(0, min(1, point.value))))
+                path.addLine(to: CGPoint(x: x, y: y))
+            }
+            path.addLine(to: CGPoint(x: size.width, y: size.height))
+            path.closeSubpath()
+
+            context.fill(
+                path,
+                with: .linearGradient(
+                    Gradient(colors: [laneColor.opacity(0.95), laneColor.opacity(0.55)]),
+                    startPoint: .zero,
+                    endPoint: CGPoint(x: 0, y: size.height)
+                )
+            )
         }
     }
 
@@ -404,6 +533,13 @@ struct DAWTimelineView: View {
 
     // MARK: - Helpers
 
+    /// Snap a time to the zoom-dependent grid: 0.1s zoomed out, 0.05s zoomed in.
+    private func snappedTime(_ t: Double) -> Double {
+        guard snapEnabled else { return t }
+        let grid = zoomScale < 2 ? 0.1 : 0.05
+        return (t / grid).rounded() * grid
+    }
+
     private func formatTimeShort(_ time: Double) -> String {
         let minutes = Int(time) / 60
         let seconds = Int(time) % 60
@@ -433,7 +569,16 @@ struct Triangle: Shape {
             events: .constant([
                 HapticEvent(time: 1.0, intensity: 0.8, sharpness: 0.5, duration: 0, type: .transient),
                 HapticEvent(time: 2.5, intensity: 0.9, sharpness: 0.3, duration: 0, type: .impact),
-                HapticEvent(time: 4.0, intensity: 0.7, sharpness: 0.6, duration: 0.5, type: .continuous)
+                HapticEvent(time: 4.0, intensity: 0.7, sharpness: 0.6, duration: 0.5, type: .continuous),
+                HapticEvent(time: 6.0, intensity: 0.9, sharpness: 0.4, duration: 2.0, type: .continuous,
+                            intensityCurve: [
+                                HapticCurvePoint(time: 0.0, value: 0.2),
+                                HapticCurvePoint(time: 0.4, value: 0.9),
+                                HapticCurvePoint(time: 0.8, value: 0.4),
+                                HapticCurvePoint(time: 1.2, value: 1.0),
+                                HapticCurvePoint(time: 1.6, value: 0.5),
+                                HapticCurvePoint(time: 2.0, value: 0.1)
+                            ])
             ]),
             currentTime: .constant(2.0),
             selectedEvent: .constant(nil),

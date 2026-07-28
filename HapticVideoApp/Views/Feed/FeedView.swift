@@ -9,9 +9,38 @@ import SwiftUI
 
 struct FeedView: View {
     @StateObject private var viewModel = FeedViewModel()
+    @EnvironmentObject var authViewModel: AuthenticationViewModel
     @State private var selectedVideo: Video?
     @State private var showPlayer = false
-    
+    @State private var sortOption: FeedSortOption = .all
+    @State private var searchText = ""
+
+    enum FeedSortOption: String, CaseIterable {
+        case all = "All"
+        case withHaptics = "With Haptics"
+        case mostViewed = "Most Viewed"
+        case newest = "Newest"
+    }
+
+    // Local search + sort over the fetched videos
+    private var displayedVideos: [Video] {
+        var videos = viewModel.videos
+        if !searchText.isEmpty {
+            videos = videos.filter { $0.title.localizedCaseInsensitiveContains(searchText) }
+        }
+        switch sortOption {
+        case .all:
+            break
+        case .withHaptics:
+            videos = videos.filter(\.hasHaptics)
+        case .mostViewed:
+            videos.sort { $0.views > $1.views }
+        case .newest:
+            videos.sort { $0.uploadedAt > $1.uploadedAt }
+        }
+        return videos
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -45,6 +74,7 @@ struct FeedView: View {
             }
             .toolbarBackground(AppColors.backgroundDark, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
+            .searchable(text: $searchText, prompt: "Search videos")
             .fullScreenCover(isPresented: $showPlayer) {
                 if let video = selectedVideo {
                     VideoPlayerView(video: video)
@@ -68,13 +98,35 @@ struct FeedView: View {
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
                 
+                if displayedVideos.isEmpty {
+                    noResultsView
+                        .padding(.top, 60)
+                }
+
                 // Video Cards
-                ForEach(viewModel.videos) { video in
+                ForEach(displayedVideos) { video in
                     ModernVideoCard(video: video) {
                         UIHaptics.buttonTapMedium()
                         selectedVideo = video
                         showPlayer = true
                         viewModel.incrementViews(for: video.id)
+                    }
+                    .simultaneousGesture(
+                        // Matches the system long-press that opens the context menu
+                        LongPressGesture(minimumDuration: 0.5).onEnded { _ in
+                            UIHaptics.selectionChanged()
+                        }
+                    )
+                    .contextMenu {
+                        // Owners can delete their own uploads
+                        if video.uploaderID == authViewModel.currentUser?.id {
+                            Button(role: .destructive) {
+                                UIHaptics.deleteEvent()
+                                viewModel.deleteVideo(video)
+                            } label: {
+                                Label("Delete Video", systemImage: "trash")
+                            }
+                        }
                     }
                     .padding(.horizontal, 20)
                 }
@@ -99,22 +151,47 @@ struct FeedView: View {
                     .font(AppTypography.title)
                     .foregroundColor(AppColors.textPrimary)
                 
-                Text("\(viewModel.videos.count) haptic videos")
+                Text("\(displayedVideos.count) haptic videos")
                     .font(AppTypography.subheadline)
                     .foregroundColor(AppColors.textSecondary)
             }
-            
+
             Spacer()
-            
-            // Filter Button
-            Button {
-                UIHaptics.buttonTap()
+
+            // Sort / Filter Menu
+            Menu {
+                ForEach(FeedSortOption.allCases, id: \.self) { option in
+                    Button {
+                        UIHaptics.buttonTap()
+                        sortOption = option
+                    } label: {
+                        if sortOption == option {
+                            Label(option.rawValue, systemImage: "checkmark")
+                        } else {
+                            Text(option.rawValue)
+                        }
+                    }
+                }
             } label: {
                 Image(systemName: "slider.horizontal.3")
                     .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(AppColors.textSecondary)
+                    .foregroundColor(sortOption == .all ? AppColors.textSecondary : AppColors.primary)
             }
             .buttonStyle(IconButtonStyle())
+        }
+    }
+
+    // MARK: - No Results
+
+    private var noResultsView: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 32))
+                .foregroundColor(AppColors.textTertiary)
+
+            Text(searchText.isEmpty ? "No videos match this filter" : "No results for \u{201C}\(searchText)\u{201D}")
+                .font(AppTypography.subheadline)
+                .foregroundColor(AppColors.textSecondary)
         }
     }
     
@@ -200,7 +277,12 @@ struct FeedView: View {
     }
     
     private func refreshFeed() async {
+        let previousIDs = Set(viewModel.videos.map(\.id))
         await viewModel.fetchVideosAsync()
+        let currentIDs = Set(viewModel.videos.map(\.id))
+        if !currentIDs.subtracting(previousIDs).isEmpty {
+            UIHaptics.success()
+        }
     }
 }
 
@@ -279,7 +361,18 @@ struct ModernVideoCard: View {
                     .background(AppColors.primaryGradient)
                     .cornerRadius(6)
                 }
-                
+
+                // Demo Badge
+                if video.uploaderID == "demo" {
+                    Text("DEMO")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.ultraThinMaterial)
+                        .cornerRadius(6)
+                }
+
                 Spacer()
                 
                 // Duration
@@ -333,7 +426,14 @@ struct ModernVideoCard: View {
                 }
                 
                 Spacer()
-                
+
+                // Haptics Indicator
+                if video.hasHaptics {
+                    Image(systemName: "waveform")
+                        .font(.system(size: 11))
+                        .foregroundColor(AppColors.primary)
+                }
+
                 // Views
                 HStack(spacing: 4) {
                     Image(systemName: "eye.fill")
@@ -361,7 +461,8 @@ struct ModernVideoCard: View {
     private func formatDate(_ date: Date) -> String {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .abbreviated
-        return formatter.localizedString(for: date, relativeTo: Date())
+        // min(): a slightly-future date renders as "in 0 sec"
+        return formatter.localizedString(for: min(date, Date()), relativeTo: Date())
     }
 }
 

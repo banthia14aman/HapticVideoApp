@@ -24,8 +24,7 @@ class UploadViewModel: ObservableObject {
     private var pendingUploaderID: String = ""
     private var pendingUploaderUsername: String = ""
     
-    // Uses Firebase backend
-    private let dataStore = CloudDataStore.shared
+    private let dataStore = AppBackend.store
     
     func uploadVideo(
         videoURL: URL,
@@ -166,28 +165,28 @@ class UploadViewModel: ObservableObject {
             isUploading = false
             return
         }
-        
+
         do {
             print("☁️ Uploading to cloud...")
-            
+
             var validatedPattern = editedPattern
             validatedPattern.events = validateHapticEvents(editedPattern.events, videoDuration: videoDuration)
-            
-            // Get local data
+
+            // Prepare local data
             let videoData = try Data(contentsOf: videoURL)
             let thumbnailURL = try await generateThumbnail(from: videoURL)
             let thumbnailData = try Data(contentsOf: thumbnailURL)
             try? FileManager.default.removeItem(at: thumbnailURL)
-            
+
             // Encode haptics
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .iso8601
             let hapticsData = try encoder.encode(validatedPattern)
-            
+
             let video = Video(
                 id: UUID().uuidString,
                 title: pendingTitle,
-                videoURL: "", // Will be populated by CloudDataStore
+                videoURL: "",        // Populated by CloudDataStore after upload
                 thumbnailURL: "",
                 uploaderID: pendingUploaderID,
                 uploaderUsername: pendingUploaderUsername,
@@ -198,25 +197,24 @@ class UploadViewModel: ObservableObject {
                 views: 0,
                 description: pendingDescription
             )
-            
-            dataStore.uploadVideo(video: video, videoData: videoData, thumbnailData: thumbnailData, hapticsData: hapticsData) { [weak self] result in
-                DispatchQueue.main.async {
-                    switch result {
-                    case .success(_):
-                        self?.uploadProgress = 1.0
-                        self?.isUploading = false
-                        self?.showHapticEditor = false
-                        self?.generatedPattern = nil
-                        self?.currentVideoURL = nil
-                        print("✅ Cloud Upload complete!")
-                    case .failure(let error):
-                        self?.errorMessage = "Cloud Upload failed: \(error.localizedDescription)"
-                        self?.isUploading = false
-                    }
-                }
-            }
+
+            try await dataStore.uploadVideo(
+                video: video,
+                videoData: videoData,
+                videoFileExtension: videoURL.pathExtension,
+                thumbnailData: thumbnailData,
+                hapticsData: hapticsData
+            )
+
+            uploadProgress = 1.0
+            isUploading = false
+            showHapticEditor = false
+            generatedPattern = nil
+            currentVideoURL = nil
+            print("✅ Cloud Upload complete!")
+
         } catch {
-            errorMessage = "Upload prep failed: \(error.localizedDescription)"
+            errorMessage = "Upload failed: \(error.localizedDescription)"
             isUploading = false
         }
     }
@@ -250,30 +248,20 @@ class UploadViewModel: ObservableObject {
         return validatedEvents
     }
     
-    private func generateAudioAnalyzedHaptics(for videoURL: URL, duration: Double) async throws -> [HapticEvent] {
-        let asset = AVURLAsset(url: videoURL)
-        
-        guard let audioTrack = try await asset.loadTracks(withMediaType: .audio).first else {
-            print("⚠️ No audio track, using rhythm")
-            return generateRhythmicHaptics(duration: duration)
-        }
-        
-        print("🎵 Analyzing audio")
-        let audioSamples = try await extractAudioSamples(from: asset, audioTrack: audioTrack, duration: duration)
-        let events = analyzeAudioAndGenerateHaptics(samples: audioSamples, videoDuration: duration)
-        
-        return events
-    }
-    
     private func extractAudioSamples(from asset: AVURLAsset, audioTrack: AVAssetTrack, duration: Double) async throws -> [Float] {
         let reader = try AVAssetReader(asset: asset)
         
+        // Force 44.1 kHz mono — AudioAnalyzer and SoundClassifier compute event
+        // times as sampleIndex/44100 on a single channel. Without this, a 48 kHz
+        // stereo track makes every audio-derived haptic land ~2.2x early.
         let outputSettings: [String: Any] = [
             AVFormatIDKey: kAudioFormatLinearPCM,
             AVLinearPCMBitDepthKey: 16,
             AVLinearPCMIsBigEndianKey: false,
             AVLinearPCMIsFloatKey: false,
-            AVLinearPCMIsNonInterleaved: false
+            AVLinearPCMIsNonInterleaved: false,
+            AVSampleRateKey: 44100,
+            AVNumberOfChannelsKey: 1
         ]
         
         let output = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: outputSettings)
@@ -305,108 +293,6 @@ class UploadViewModel: ObservableObject {
         return samples
     }
     
-    private func analyzeAudioAndGenerateHaptics(samples: [Float], videoDuration: Double) -> [HapticEvent] {
-        var events: [HapticEvent] = []
-        
-        let windowSize = 4410
-        let hopSize = 2205
-        var currentTime: Double = 0
-        let timeIncrement = Double(hopSize) / 44100.0
-        
-        var windowIndex = 0
-        var previousEnergy: Double = 0
-        var lastContinuousTime: Double = -1.0
-        
-        while windowIndex + windowSize < samples.count {
-            let window = Array(samples[windowIndex..<min(windowIndex + windowSize, samples.count)])
-            
-            let energy = calculateRMS(window)
-            let brightness = calculateSpectralCentroid(window)
-            let isTransient = energy > previousEnergy * 1.5 && energy > 0.2
-            
-            if energy > 0.15 {
-                var newEvent: HapticEvent?
-                
-                if isTransient {
-                    newEvent = HapticEvent(
-                        time: currentTime,
-                        intensity: Float(min(1.0, energy * 3.0)),
-                        sharpness: Float(min(1.0, brightness)),
-                        duration: 0.0,
-                        type: .transient
-                    )
-                } else if energy > 0.4 {
-                    newEvent = HapticEvent(
-                        time: currentTime,
-                        intensity: Float(min(1.0, energy * 2.5)),
-                        sharpness: Float(min(0.6, brightness * 0.8)),
-                        duration: 0.0,
-                        type: .impact
-                    )
-                } else if energy > 0.25 {
-                    let timeSinceLastContinuous = currentTime - lastContinuousTime
-                    
-                    if timeSinceLastContinuous > 0.3 || lastContinuousTime < 0 {
-                        // Clamp duration to not exceed available time
-                        let availableTime = videoDuration - 1.0 - currentTime
-                        let safeDuration = min(0.2, max(0.05, availableTime))
-                        
-                        if safeDuration > 0.05 {
-                            newEvent = HapticEvent(
-                                time: currentTime,
-                                intensity: Float(min(0.9, energy * 2.0)),
-                                sharpness: Float(min(0.5, brightness * 0.7)),
-                                duration: safeDuration,
-                                type: .continuous
-                            )
-                            lastContinuousTime = currentTime
-                        }
-                    }
-                }
-                
-                if let event = newEvent {
-                    let eventEndTime = event.time + event.duration
-                    if eventEndTime <= videoDuration - 0.5 {
-                        events.append(event)
-                    }
-                }
-            }
-            
-            previousEnergy = energy
-            windowIndex += hopSize
-            currentTime += timeIncrement
-            
-            if currentTime >= videoDuration - 1.0 {
-                break
-            }
-        }
-        
-        hapticGenerationProgress = 1.0
-        print("✅ Generated \(events.count) haptics")
-        return events
-    }
-    
-    private func calculateRMS(_ samples: [Float]) -> Double {
-        guard !samples.isEmpty else { return 0 }
-        return sqrt(samples.reduce(0.0) { $0 + Double($1 * $1) } / Double(samples.count))
-    }
-    
-    private func calculateSpectralCentroid(_ samples: [Float]) -> Double {
-        guard !samples.isEmpty else { return 0 }
-        
-        var highFreqEnergy: Double = 0
-        var totalEnergy: Double = 0
-        
-        for (i, sample) in samples.enumerated() {
-            let weight = Double(i) / Double(samples.count)
-            let sampleValue = Double(abs(sample))
-            highFreqEnergy += sampleValue * weight
-            totalEnergy += sampleValue
-        }
-        
-        return totalEnergy > 0 ? (highFreqEnergy / totalEnergy) : 0
-    }
-    
     private func generateRhythmicHaptics(duration: Double) -> [HapticEvent] {
         var events: [HapticEvent] = []
         let beatInterval = 0.5
@@ -424,14 +310,6 @@ class UploadViewModel: ObservableObject {
         }
         
         return events
-    }
-    
-    private func saveVideoFile(_ sourceURL: URL) throws -> URL {
-        let documentsDir = dataStore.getDocumentsDirectory()
-        let filename = "\(UUID().uuidString).mov"
-        let destinationURL = documentsDir.appendingPathComponent(filename)
-        try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
-        return destinationURL
     }
     
     private func generateThumbnail(from videoURL: URL) async throws -> URL {
@@ -470,20 +348,6 @@ class UploadViewModel: ObservableObject {
         return seconds
     }
     
-    private func saveHapticPattern(_ pattern: HapticPattern) throws -> URL {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = .prettyPrinted
-        let data = try encoder.encode(pattern)
-        
-        let documentsDir = dataStore.getDocumentsDirectory()
-        let filename = "\(UUID().uuidString)_haptics.json"
-        let hapticsURL = documentsDir.appendingPathComponent(filename)
-        try data.write(to: hapticsURL)
-        
-        print("💾 Saved \(pattern.events.count) haptic events")
-        return hapticsURL
-    }
 }
 
 enum VideoUploadError: LocalizedError {

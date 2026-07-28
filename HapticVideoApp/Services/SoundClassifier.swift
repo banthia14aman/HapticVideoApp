@@ -51,6 +51,10 @@ final class SoundClassifier: NSObject, SNResultsObserving, @unchecked Sendable {
                               sampleRate: Double,
                               minConfidence: Double) -> [SoundHit] {
 
+        // Guard: any failure path (empty/odd audio, format, request) must
+        // return [] silently — never crash the analysis pipeline.
+        guard !samples.isEmpty, sampleRate > 0 else { return [] }
+
         // Reset accumulator
         resultsLock.lock(); hits.removeAll(); resultsLock.unlock()
 
@@ -108,8 +112,36 @@ final class SoundClassifier: NSObject, SNResultsObserving, @unchecked Sendable {
             .sorted { $0.time < $1.time }
         resultsLock.unlock()
 
-        print("🎙️ SoundClassifier: \(filtered.count) hits (≥\(Int(minConfidence * 100))% confidence)")
-        return filtered
+        let smoothed = Self.mergeAdjacentHits(filtered)
+        print("🎙️ SoundClassifier: \(smoothed.count) hits (≥\(Int(minConfidence * 100))% confidence, merged from \(filtered.count))")
+        return smoothed
+    }
+
+    /// Confidence smoothing: single-window classifications flicker. Merge
+    /// same-label hits whose gap is ≤ `maxGap` into one hit spanning both,
+    /// keeping the max confidence.
+    static func mergeAdjacentHits(_ hits: [SoundHit], maxGap: Double = 0.5) -> [SoundHit] {
+        guard hits.count > 1 else { return hits }
+        var byLabel: [String: [SoundHit]] = [:]
+        for hit in hits { byLabel[hit.label, default: []].append(hit) }
+
+        var merged: [SoundHit] = []
+        for (_, group) in byLabel {
+            var current = group[0]   // group preserves input (time) order
+            for hit in group.dropFirst() {
+                if hit.time - current.endTime <= maxGap {
+                    current = SoundHit(time: current.time,
+                                       endTime: max(current.endTime, hit.endTime),
+                                       label: current.label,
+                                       confidence: max(current.confidence, hit.confidence))
+                } else {
+                    merged.append(current)
+                    current = hit
+                }
+            }
+            merged.append(current)
+        }
+        return merged.sorted { $0.time < $1.time }
     }
 
     // MARK: - SNResultsObserving

@@ -9,10 +9,13 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var authViewModel: AuthenticationViewModel
-    
+    @AppStorage("hasOnboarded") private var hasOnboarded = false
+
     var body: some View {
         Group {
-            if authViewModel.isAuthenticated {
+            if !hasOnboarded {
+                OnboardingView(onComplete: { hasOnboarded = true })
+            } else if authViewModel.isAuthenticated {
                 MainTabView()
             } else {
                 AuthenticationView()
@@ -47,6 +50,10 @@ struct MainTabView: View {
                 .padding(.bottom, 20)
         }
         .ignoresSafeArea(.keyboard)
+        // ponytail: single haptic source for tab switches (buttons, swipes) — buttons don't fire their own
+        .onChange(of: selectedTab) { _, _ in
+            UIHaptics.selectionChanged()
+        }
     }
     
     private var floatingTabBar: some View {
@@ -65,7 +72,6 @@ struct MainTabView: View {
             
             // Center Upload Button
             Button {
-                UIHaptics.buttonTapMedium()
                 withAnimation(.spring(response: 0.3)) {
                     selectedTab = 1
                 }
@@ -114,10 +120,7 @@ struct TabBarButton: View {
     let action: () -> Void
     
     var body: some View {
-        Button(action: {
-            UIHaptics.selectionChanged()
-            action()
-        }) {
+        Button(action: action) {
             VStack(spacing: 4) {
                 Image(systemName: icon)
                     .font(.system(size: 20, weight: isSelected ? .semibold : .regular))

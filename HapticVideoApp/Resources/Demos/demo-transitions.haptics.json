@@ -1,0 +1,139 @@
+{
+ "id": "84CCF29B-FDB9-4056-99C6-13EDFEF342DE",
+ "videoID": "demo-transitions",
+ "events": [
+  {
+   "id": "14961959-8802-46D0-BFB3-F241C7989B93",
+   "time": 3.3,
+   "intensity": 1.0,
+   "sharpness": 0.45,
+   "duration": 1.15,
+   "type": "continuous",
+   "intensityCurve": [
+    {
+     "time": 0,
+     "value": 0.12
+    },
+    {
+     "time": 0.3,
+     "value": 0.22
+    },
+    {
+     "time": 0.6,
+     "value": 0.35
+    },
+    {
+     "time": 0.9,
+     "value": 0.5
+    },
+    {
+     "time": 1.1,
+     "value": 0.65
+    },
+    {
+     "time": 1.15,
+     "value": 0.0
+    }
+   ]
+  },
+  {
+   "id": "977545B6-0309-4E13-877B-FAB0530EFE60",
+   "time": 4.5,
+   "intensity": 1.0,
+   "sharpness": 0.75,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "382F9BE2-A661-4A4C-8E43-A64B349E6234",
+   "time": 4.53,
+   "intensity": 1.0,
+   "sharpness": 0.12,
+   "duration": 0.5,
+   "type": "continuous",
+   "intensityCurve": [
+    {
+     "time": 0,
+     "value": 0.65
+    },
+    {
+     "time": 0.2,
+     "value": 0.3
+    },
+    {
+     "time": 0.5,
+     "value": 0.0
+    }
+   ]
+  },
+  {
+   "id": "5AAE99A8-AC67-468E-9715-4A4004FFF001",
+   "time": 7.8,
+   "intensity": 1.0,
+   "sharpness": 0.45,
+   "duration": 1.15,
+   "type": "continuous",
+   "intensityCurve": [
+    {
+     "time": 0,
+     "value": 0.12
+    },
+    {
+     "time": 0.3,
+     "value": 0.22
+    },
+    {
+     "time": 0.6,
+     "value": 0.35
+    },
+    {
+     "time": 0.9,
+     "value": 0.5
+    },
+    {
+     "time": 1.1,
+     "value": 0.65
+    },
+    {
+     "time": 1.15,
+     "value": 0.0
+    }
+   ]
+  },
+  {
+   "id": "48DB6FA9-6851-4EFC-96B5-42E0C7A38D9A",
+   "time": 9.0,
+   "intensity": 1.0,
+   "sharpness": 0.75,
+   "duration": 0.0,
+   "type": "transient"
+  },
+  {
+   "id": "993D9A4F-1387-4740-93F6-074DD923A0AD",
+   "time": 9.03,
+   "intensity": 1.0,
+   "sharpness": 0.12,
+   "duration": 0.5,
+   "type": "continuous",
+   "intensityCurve": [
+    {
+     "time": 0,
+     "value": 0.65
+    },
+    {
+     "time": 0.2,
+     "value": 0.3
+    },
+    {
+     "time": 0.5,
+     "value": 0.0
+    }
+   ]
+  }
+ ],
+ "metadata": {
+  "createdAt": "2026-07-27T00:00:00Z",
+  "updatedAt": "2026-07-27T00:00:00Z",
+  "version": "2.0"
+ }
+}

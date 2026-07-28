@@ -13,6 +13,7 @@ struct HapticEditorView: View {
     let videoURL: URL
     let videoDuration: Double
     var onSave: (HapticPattern) -> Void
+    var onCancel: (() -> Void)?
 
     @StateObject private var viewModel: HapticEditorViewModel
     @Environment(\.dismiss) var dismiss
@@ -21,12 +22,16 @@ struct HapticEditorView: View {
     @State private var zoomScale: Double = 1.0
     @State private var selectedEvent: HapticEvent?
     @State private var lastPinchScale: CGFloat = 1.0
+    @State private var isMonitorFullscreen = false
+    @State private var showPresets = false
+    @State private var showLiveRecord = false
 
-    init(pattern: Binding<HapticPattern>, videoURL: URL, videoDuration: Double, onSave: @escaping (HapticPattern) -> Void) {
+    init(pattern: Binding<HapticPattern>, videoURL: URL, videoDuration: Double, onSave: @escaping (HapticPattern) -> Void, onCancel: (() -> Void)? = nil) {
         self._pattern = pattern
         self.videoURL = videoURL
         self.videoDuration = videoDuration
         self.onSave = onSave
+        self.onCancel = onCancel
         self._viewModel = StateObject(wrappedValue: HapticEditorViewModel(
             pattern: pattern.wrappedValue,
             videoURL: videoURL,
@@ -52,6 +57,19 @@ struct HapticEditorView: View {
         }
         .preferredColorScheme(.dark)
         .statusBarHidden(true)
+        .sheet(isPresented: $showPresets) {
+            HapticPresetsSheet(currentTime: viewModel.currentTime) { events in
+                UIHaptics.addEvent()
+                for event in events { viewModel.addEvent(event) }
+            }
+        }
+        .fullScreenCover(isPresented: $showLiveRecord) {
+            LivePerformanceView(videoURL: videoURL, videoDuration: videoDuration) { events in
+                UIHaptics.success()
+                // ponytail: merge = append + sort; addEvent already sorts per insert
+                for event in events { viewModel.addEvent(event) }
+            }
+        }
         .onAppear {
             UIHaptics.prepare()
             viewModel.setupPlayer()
@@ -76,6 +94,7 @@ struct HapticEditorView: View {
     private var topBar: some View {
         HStack(spacing: 12) {
             iconButton(systemName: "chevron.left") {
+                onCancel?()
                 dismiss()
             }
 
@@ -90,13 +109,12 @@ struct HapticEditorView: View {
 
             Spacer()
 
-            // Undo/redo placeholders kept visually for Premiere parity
-            iconButton(systemName: "arrow.uturn.backward") { UIHaptics.buttonTap() }
-                .disabled(true)
-                .opacity(0.4)
-            iconButton(systemName: "arrow.uturn.forward") { UIHaptics.buttonTap() }
-                .disabled(true)
-                .opacity(0.4)
+            iconButton(systemName: "arrow.uturn.backward") { viewModel.undo() }
+                .disabled(!viewModel.canUndo)
+                .opacity(viewModel.canUndo ? 1 : 0.4)
+            iconButton(systemName: "arrow.uturn.forward") { viewModel.redo() }
+                .disabled(!viewModel.canRedo)
+                .opacity(viewModel.canRedo ? 1 : 0.4)
 
             Button {
                 UIHaptics.success()
@@ -116,7 +134,7 @@ struct HapticEditorView: View {
                     )
             }
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 16)
         .frame(height: EditorDimensions.topBarHeight)
         .background(EditorColors.panel)
         .overlay(alignment: .bottom) {
@@ -157,12 +175,55 @@ struct HapticEditorView: View {
                     .padding(8)
                 }
                 Spacer()
+                HStack {
+                    Spacer()
+                    Button {
+                        UIHaptics.buttonTap()
+                        isMonitorFullscreen = true
+                    } label: {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 30, height: 30)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+                    .padding(14)
+                }
             }
         }
         .frame(height: 200)
         .overlay(alignment: .bottom) {
             Rectangle().fill(EditorColors.divider).frame(height: 1)
         }
+        .fullScreenCover(isPresented: $isMonitorFullscreen) {
+            fullscreenMonitor
+        }
+    }
+
+    /// Fullscreen view of the SAME player — position and haptics carry over.
+    private var fullscreenMonitor: some View {
+        ZStack(alignment: .topTrailing) {
+            Color.black.ignoresSafeArea()
+
+            if let player = viewModel.player {
+                VideoPlayer(player: player)
+                    .ignoresSafeArea()
+            }
+
+            Button {
+                UIHaptics.buttonTap()
+                isMonitorFullscreen = false
+            } label: {
+                Image(systemName: "arrow.down.right.and.arrow.up.left")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 36, height: 36)
+                    .background(.ultraThinMaterial, in: Circle())
+            }
+            .padding(16)
+        }
+        .preferredColorScheme(.dark)
+        .statusBarHidden(true)
     }
 
     // MARK: - Transport Bar
@@ -258,6 +319,36 @@ struct HapticEditorView: View {
             Spacer()
 
             Button {
+                UIHaptics.buttonTap()
+                showPresets = true
+            } label: {
+                Image(systemName: "square.grid.2x2")
+                    .font(.system(size: 12))
+                    .foregroundColor(EditorColors.textSecondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(EditorColors.surfaceElevated)
+                    )
+            }
+
+            Button {
+                UIHaptics.buttonTapMedium()
+                showLiveRecord = true
+            } label: {
+                Image(systemName: "record.circle")
+                    .font(.system(size: 12))
+                    .foregroundColor(EditorColors.playhead)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(EditorColors.surfaceElevated)
+                    )
+            }
+
+            Button {
                 guard let event = selectedEvent else { return }
                 UIHaptics.previewEventType(event.type)
                 viewModel.previewEvent(event)
@@ -314,8 +405,14 @@ struct HapticEditorView: View {
             HStack(spacing: 5) {
                 Image(systemName: tool.iconName)
                     .font(.system(size: 10, weight: .bold))
-                Text(tool.label.uppercased())
-                    .font(.system(size: 10, weight: .semibold))
+                // Label only on the active tool — all four labels don't fit
+                // the row width and wrapped mid-word ("SELE CT").
+                if active {
+                    Text(tool.label.uppercased())
+                        .font(.system(size: 10, weight: .semibold))
+                        .lineLimit(1)
+                        .fixedSize()
+                }
             }
             .foregroundColor(active ? .white : EditorColors.textSecondary)
             .padding(.horizontal, 10)
@@ -340,7 +437,8 @@ struct HapticEditorView: View {
             isPlaying: viewModel.isPlaying,
             thumbnails: viewModel.thumbnails,
             onSeek: { time in
-                UIHaptics.scrub()
+                // Per-event scrub ticks fire inside DAWTimelineView — a flat
+                // buzz per drag frame here drowned them out.
                 viewModel.seek(to: time)
             },
             onAddEvent: { time, type in
@@ -370,6 +468,9 @@ struct HapticEditorView: View {
                 withAnimation(.spring(response: 0.3)) {
                     selectedEvent = event
                 }
+            },
+            onUpdateCurve: { id, curve in
+                viewModel.updateCurve(id: id, curve: curve)
             }
         )
         .frame(maxHeight: .infinity)
@@ -394,12 +495,12 @@ struct HapticEditorView: View {
     private func inspector(for event: HapticEvent) -> some View {
         VStack(spacing: 14) {
             HStack(spacing: 10) {
-                Circle()
-                    .fill(EditorColors.color(for: event.type))
-                    .frame(width: 8, height: 8)
+                Image(systemName: EditorColors.icon(for: event.type))
+                    .font(.system(size: 10))
+                    .foregroundColor(EditorColors.color(for: event.type))
                 Text(event.type.rawValue.uppercased())
                     .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundColor(EditorColors.textPrimary)
+                    .foregroundColor(EditorColors.color(for: event.type))
                 Text("@ \(formatTime(event.time))")
                     .font(.system(size: 11, design: .monospaced))
                     .foregroundColor(EditorColors.textTertiary)
@@ -474,6 +575,18 @@ struct HapticEditorView: View {
                     }
                 }
             }
+
+            if let curve = event.intensityCurve {
+                HStack(spacing: 6) {
+                    Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
+                        .font(.system(size: 9))
+                        .foregroundColor(EditorColors.continuous)
+                    Text("INTENSITY CURVE  •  \(curve.count) POINTS")
+                        .font(.system(size: 9, weight: .semibold, design: .monospaced))
+                        .foregroundColor(EditorColors.textTertiary)
+                    Spacer()
+                }
+            }
         }
         .padding(14)
         .frame(maxWidth: .infinity)
@@ -498,9 +611,7 @@ struct HapticEditorView: View {
                     .font(.system(size: 9, weight: .semibold, design: .monospaced))
                     .foregroundColor(EditorColors.textTertiary)
                 Spacer()
-                Text(suffix.isEmpty
-                     ? String(format: "%.0f%%", value * 100)
-                     : String(format: "%.2f%@", value, suffix))
+                Text(String(format: "%.2f%@", value, suffix))
                     .font(.system(size: 10, weight: .semibold, design: .monospaced))
                     .foregroundColor(color)
             }
